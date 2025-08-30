@@ -1,28 +1,60 @@
 #include <raylib.h>
+#include <iostream>
+#include <chrono>
+
+#include "shapes/l_shape.h"
+
+void render(vector<Pixel> shape, const int scale){
+    for (auto block : shape){
+        // std::cout << "x is " << block.x;
+        // std::cout << "y is " << block.y;
+        // std::cout << "---------";
+        DrawRectangle(block.x * scale, block.y * scale, scale, scale, MAROON);
+    };
+};
 
 int main(void)
 {
     // Initialization
+    //g++ testing.cpp -o testing $(pkg-config --cflags --libs raylib) -std=c++17
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 500;
-    const int screenHeight = 1000;
+    const int screenWidth = 400;
+    const int screenHeight = 2*screenWidth;
+    const int scale = screenWidth / 10;
 
     InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
 
-    Vector2 ballPosition = { (float)screenWidth/2, (float)screenHeight/2 };
+    int x = 0;
+    int y = 0;
 
-    SetTargetFPS(6);               // Set our game to run at 60 frames-per-second
+    LShape tetri_one = LShape(x, y);
+    // vector<Pixel> shape = tetri_one.get_shape();
+    // std::cout << "Size is " << tetri_one.get_shape().size();
+
+    // for (auto block : shape){
+    //     std::cout << "x is " << block.x << "\n";
+    //     std::cout << "y is " << block.y << "\n";
+    //     std::cout << "---------" << "\n";
+    // }
+
+
+    SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
+    float speed = 1;
+    auto prev = std::chrono::high_resolution_clock::now();
 
     // Main game loop
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
         // Update
         //----------------------------------------------------------------------------------
-        if (IsKeyDown(KEY_RIGHT)) ballPosition.x += 2.0f;
-        if (IsKeyDown(KEY_LEFT)) ballPosition.x -= 2.0f;
-        if (IsKeyDown(KEY_UP)) ballPosition.y -= 2.0f;
-        if (IsKeyDown(KEY_DOWN)) ballPosition.y += 2.0f;
+        auto now = std::chrono::high_resolution_clock::now();
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - prev);
+        if ((diff.count() >= 1000) && ((y + 4)*scale <= screenHeight)) {
+            prev = now;
+            y = y + 1;
+            tetri_one.update_position(x, y);
+        };
         //----------------------------------------------------------------------------------
 
         // Draw
@@ -30,10 +62,8 @@ int main(void)
         BeginDrawing();
 
             ClearBackground(RAYWHITE);
-
-            DrawText("move the ball with arrow keys", 10, 10, 20, DARKGRAY);
-
-            DrawCircleV(ballPosition, 50, MAROON);
+            // DrawRectangle(ballPosition.x, ballPosition.y, scale, scale, MAROON);
+            render(tetri_one.get_shape(), scale);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
