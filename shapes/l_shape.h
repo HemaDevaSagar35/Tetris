@@ -14,8 +14,11 @@ class Pixel{
 
 class LShape {
     vector <Pixel> shape;
+    int rotation;
+
     public:
         LShape (int x, int y) {
+            this->rotation = 0;
             create_shape(x, y);
 
         };
@@ -42,6 +45,65 @@ class LShape {
             shape[3].y = shape[3].y + delta_y;
         };
 
+        void update_shape(int rotate){
+            // 0 -> 90 & 0 -> -90
+            // 90 -> 180 & 90 -> 0
+            // 180 -> 270 & 270 -> 180
+            //270 -> 360 & 360 -> 270
+
+            if (this->rotation == 0){
+                if (rotate == 1){
+                    shape[0].x = shape[0].x + 2;
+                    shape[1].x, shape[1].y = shape[1].x + 1, shape[1].y - 1;
+                    shape[2].y = shape[2].y - 2;
+                    shape[3].x, shape[3].y = shape[3].x - 1, shape[3].y - 1;
+                    this->rotation = (this->rotation + 90) % 360;
+                }else {
+                    shape[0].y = shape[0].y - 1;
+                    shape[1].x = shape[1].x + 1;
+                    shape[2].x, shape[2].y = shape[2].x + 2, shape[2].y - 1;
+                    shape[3].x, shape[3].y = shape[3].x + 1, shape[3].y - 2;
+                    this->rotation = (this->rotation - 90) % 360;
+
+                }
+            else if (this->rotation == 90){
+                if (rotate == 1){
+                    shape[0].y = shape[0].y + 2;
+                    shape[1].x, shape[1].y = shape[1].x + 1, shape[1].y + 1;
+                    shape[2].x = shape[2].x + 2;
+                    shape[3].x, shape[3].y = shape[3].x + 1, shape[3].y - 1;
+                    this->rotation = (this->rotation + 90) % 360;
+                }else {
+                    shape[0].x = shape[0].x - 2;
+                    shape[1].x, shape[1].y = shape[1].x - 1, shape[1].y + 1;
+                    shape[2].y = shape[2].y + 2;
+                    shape[3].x, shape[3].y = shape[3].x + 1, shape[3].y + 1;
+                    this->rotation = (this->rotation - 90) % 360;
+
+                }
+            }else if (this->rotation == 180){
+                if (rotate == 1){
+                    // 270
+                    shape[0].x, shape[0].y = shape[0].x - 2, shape[0].y - 1;
+                    shape[1].x = shape[1].x - 1;
+                    shape[2].y = shape[2].y + 1;
+                    shape[3].x = shape[3].x + 1;
+
+                    this->rotation = (this->rotation + 90) % 360;
+                }else{
+                    // 90
+                    shape[0].y = shape[0].y - 2;
+                    shape[1].x, shape[1].y = shape[1].x - 1, shape[1].y - 1;
+                    shape[2].x = shape[2].x - 2;
+                    shape[3].x, shape[3].y = shape[3].x - 1, shape[3].y + 1;
+
+
+                }
+            }
+
+            
+        }
+
     private:
         void create_shape(int x, int y){
             Pixel block1(x, y);
@@ -58,6 +120,6 @@ class LShape {
 
         };
 
-        
+
 
 };
