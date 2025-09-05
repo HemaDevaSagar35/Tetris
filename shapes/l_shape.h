@@ -54,49 +54,110 @@ class LShape {
             if (this->rotation == 0){
                 if (rotate == 1){
                     shape[0].x = shape[0].x + 2;
-                    shape[1].x, shape[1].y = shape[1].x + 1, shape[1].y - 1;
-                    shape[2].y = shape[2].y - 2;
-                    shape[3].x, shape[3].y = shape[3].x - 1, shape[3].y - 1;
-                    this->rotation = (this->rotation + 90) % 360;
-                }else {
-                    shape[0].y = shape[0].y - 1;
+
                     shape[1].x = shape[1].x + 1;
-                    shape[2].x, shape[2].y = shape[2].x + 2, shape[2].y - 1;
-                    shape[3].x, shape[3].y = shape[3].x + 1, shape[3].y - 2;
-                    this->rotation = (this->rotation - 90) % 360;
+                    shape[1].y = shape[1].y - 1;
+
+                    shape[2].y = shape[2].y - 2;
+
+                    shape[3].x = shape[3].x - 1;
+                    shape[3].y = shape[3].y - 1;
+
+                    this->rotation = 90;
+                }else {
+                    shape[0].y = shape[0].y + 1;
+
+                    shape[1].x = shape[1].x + 1;
+
+                    shape[2].x = shape[2].x + 2;
+                    shape[2].y = shape[2].y - 1;
+
+                    shape[3].x = shape[3].x + 1;
+                    shape[3].y = shape[3].y - 2;
+
+                    this->rotation = 270;
 
                 }
             else if (this->rotation == 90){
                 if (rotate == 1){
                     shape[0].y = shape[0].y + 2;
-                    shape[1].x, shape[1].y = shape[1].x + 1, shape[1].y + 1;
+
+                    shape[1].x = shape[1].x + 1;
+                    shape[1].y = shape[1].y + 1;
+
                     shape[2].x = shape[2].x + 2;
-                    shape[3].x, shape[3].y = shape[3].x + 1, shape[3].y - 1;
-                    this->rotation = (this->rotation + 90) % 360;
+
+                    shape[3].x = shape[3].x + 1;
+                    shape[3].y = shape[3].y - 1;
+
+                    this->rotation = 180;
                 }else {
                     shape[0].x = shape[0].x - 2;
-                    shape[1].x, shape[1].y = shape[1].x - 1, shape[1].y + 1;
+
+                    shape[1].x = shape[1].x - 1;
+                    shape[1].y = shape[1].y + 1;
+
                     shape[2].y = shape[2].y + 2;
-                    shape[3].x, shape[3].y = shape[3].x + 1, shape[3].y + 1;
-                    this->rotation = (this->rotation - 90) % 360;
+
+                    shape[3].x = shape[3].x + 1;
+                    shape[3].y = shape[3].y + 1;
+
+                    this->rotation = 0;
 
                 }
             }else if (this->rotation == 180){
                 if (rotate == 1){
                     // 270
-                    shape[0].x, shape[0].y = shape[0].x - 2, shape[0].y - 1;
+                    shape[0].x = shape[0].x - 2;
+                    shape[0].y = shape[0].y - 1;
+
                     shape[1].x = shape[1].x - 1;
+
                     shape[2].y = shape[2].y + 1;
+
                     shape[3].x = shape[3].x + 1;
 
-                    this->rotation = (this->rotation + 90) % 360;
+                    this->rotation = 270;
                 }else{
                     // 90
                     shape[0].y = shape[0].y - 2;
-                    shape[1].x, shape[1].y = shape[1].x - 1, shape[1].y - 1;
-                    shape[2].x = shape[2].x - 2;
-                    shape[3].x, shape[3].y = shape[3].x - 1, shape[3].y + 1;
 
+                    shape[1].x = shape[1].x - 1;
+                    shape[1].y = shape[1].y - 1;
+
+                    shape[2].x = shape[2].x - 2;
+
+                    shape[3].x = shape[3].x - 1;
+                    shape[3].y = shape[3].y + 1;
+
+                    this->rotation = 90;
+                }
+            } else if (this->rotation == 270){
+                if (rotate == 1){
+                    // 360
+                    shape[0].y = shape[0].y - 1;
+
+                    shape[1].x = shape[1].x - 1;
+
+                    shape[2].x = shape[2].x - 2;
+                    shape[2].y = shape[2].y + 1;
+
+                    shape[3].x = shape[3].x - 1;
+                    shape[3].y = shape[3].y + 2;
+                    
+                    this->rotation = 0;
+                }else{
+                    // 180
+                    shape[0].x = shape[0].x + 2;
+                    shape[0].y = shape[0].y + 1;
+
+                    shape[1].x = shape[1].x + 1;
+
+                    shape[2].y = shape[2].y - 1;
+
+                    shape[3].x = shape[3].x - 1;
+
+                    this->rotation = 180;
 
                 }
             }
