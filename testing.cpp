@@ -39,6 +39,14 @@ class Element{
 //     return Element(x, rotation);
 // };
 
+void shape_testing(vector<Pixel> shape){
+    for (auto block : shape){
+        std::cout << "x is " << block.x << "\n";
+        std::cout << "y is " << block.y << "\n";
+        std::cout << "---------" << "\n";
+    };
+}
+
 
 int main(void)
 {
@@ -49,6 +57,8 @@ int main(void)
     const int screenHeight = 2*screenWidth;
     const int scale = screenWidth / 10;
 
+    const int x_max_scaled = (int) screenWidth / scale - 1;
+
     InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
 
     int x = 0;
@@ -57,6 +67,8 @@ int main(void)
     LShape tetri_one = LShape(x, y, 0);
     Boundary limits = tetri_one.get_boundary();
     int rotate = 0;
+    bool reset = false;
+    int delta_x = 0;
     // vector<Pixel> shape = tetri_one.get_shape();
     // std::cout << "Size is " << tetri_one.get_shape().size();
 
@@ -79,7 +91,7 @@ int main(void)
         // Update
         //----------------------------------------------------------------------------------
         auto now = std::chrono::high_resolution_clock::now();
-
+        
         // clock-wise rotation
         if (IsKeyDown(KEY_C) && (rotate != -1)){
             rotate = 1;
@@ -89,6 +101,7 @@ int main(void)
             if (rotate == 1){
                 cout << "Update" << "\n";
                 tetri_one.update_shape(rotate);
+                limits = tetri_one.get_boundary();
                 rotate = 0;
             };
         };
@@ -99,9 +112,46 @@ int main(void)
         } else{
             if (rotate == -1){
                 tetri_one.update_shape(rotate);
+                limits = tetri_one.get_boundary();
                 rotate = 0;
+                reset = true;
             }
 
+        };
+
+        // move left
+        if (IsKeyDown(KEY_LEFT)){
+            cout << "left arrow is " << "\n";
+            if (limits.x_min == 0){
+                delta_x = 0;
+            }
+            else{
+                delta_x = -1;
+            };
+        }else{
+            if (delta_x == -1){
+                tetri_one.update_position(delta_x, 0);
+                limits = tetri_one.get_boundary();
+                delta_x = 0;
+            };
+        };
+
+        // move right
+        if (IsKeyDown(KEY_RIGHT)){
+            if (limits.x_max == x_max_scaled){
+                delta_x = 0;
+            }
+            else{
+                delta_x = 1;
+            };
+        }else{
+            if (delta_x == 1){
+                // cout << "Update" << "\n";
+                // shape_testing(tetri_one.get_shape());
+                tetri_one.update_position(delta_x, 0);
+                limits = tetri_one.get_boundary();
+                delta_x = 0;
+            };
         };
 
         

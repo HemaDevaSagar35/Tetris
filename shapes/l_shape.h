@@ -1,4 +1,5 @@
 #include <vector>
+#include <limits>
 
 using namespace std;
 
@@ -27,7 +28,7 @@ class Boundary{
 class LShape {
     vector <Pixel> shape;
     int rotation;
-    Boundary limits{0, 0, 0};
+    Boundary limits{numeric_limits<int>::max(), 0, 0};
 
     public:
         LShape (int x, int y, int rotation) {
@@ -39,6 +40,7 @@ class LShape {
                 start += 90;
             }
             this->rotation = start;
+            update_boundary();
 
         };
 
@@ -211,6 +213,9 @@ class LShape {
         };
     
         void update_boundary(){
+            limits.x_min = numeric_limits<int>::max();
+            limits.x_max = 0;
+            limits.y_max = 0;
             for (auto b : shape){
                 limits.x_min = min(limits.x_min, b.x);
                 limits.x_max = max(limits.x_max, b.x);
