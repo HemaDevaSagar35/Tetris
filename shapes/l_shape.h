@@ -12,14 +12,33 @@ class Pixel{
         };
 };
 
+class Boundary{
+    public:
+        int x_min;
+        int x_max;
+        int y_max;
+        Boundary(int x_min, int x_max, int y_max){
+            this->x_min = x_min;
+            this->x_max = x_max;
+            this->y_max = y_max;
+        };
+};
+
 class LShape {
     vector <Pixel> shape;
     int rotation;
+    Boundary limits{0, 0, 0};
 
     public:
-        LShape (int x, int y) {
-            this->rotation = 0;
+        LShape (int x, int y, int rotation) {
+
             create_shape(x, y);
+            int start = 0;
+            while (start < rotation){
+                update_shape(1);
+                start += 90;
+            }
+            this->rotation = start;
 
         };
 
@@ -27,10 +46,14 @@ class LShape {
             return shape;
         };
 
-        void update_position(int x, int y){
+        Boundary get_boundary(){
+            return limits;
+        }
+
+        void update_position(int delta_x, int delta_y){
             // the updates here are affine like right or left or lowering
-            int delta_x = x - shape[0].x;
-            int delta_y = y - shape[0].y;
+            // int delta_x = x - shape[0].x;
+            // int delta_y = y - shape[0].y;
 
             shape[0].x = shape[0].x + delta_x;
             shape[0].y = shape[0].y + delta_y;
@@ -43,6 +66,8 @@ class LShape {
 
             shape[3].x = shape[3].x + delta_x;
             shape[3].y = shape[3].y + delta_y;
+
+            update_boundary();
         };
 
         void update_shape(int rotate){
@@ -78,6 +103,7 @@ class LShape {
                     this->rotation = 270;
 
                 }
+            }
             else if (this->rotation == 90){
                 if (rotate == 1){
                     shape[0].y = shape[0].y + 2;
@@ -162,6 +188,7 @@ class LShape {
                 }
             }
 
+            update_boundary();
             
         }
 
@@ -179,8 +206,15 @@ class LShape {
             Pixel block4(x + 1, y + 2);
             shape.push_back(block4);
 
+            update_boundary();
+
         };
-
-
-
+    
+        void update_boundary(){
+            for (auto b : shape){
+                limits.x_min = min(limits.x_min, b.x);
+                limits.x_max = max(limits.x_max, b.x);
+                limits.y_max = max(limits.y_max, b.y);
+            };
+        };
 };
