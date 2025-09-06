@@ -47,6 +47,18 @@ void shape_testing(vector<Pixel> shape){
     };
 }
 
+int xaxis_correction(Boundary limits, int x_max_scaled){
+    if (limits.x_min < 0){
+        return -1*limits.x_min;
+    };
+
+    if (limits.x_max > x_max_scaled){
+        return x_max_scaled - limits.x_max;
+    };
+
+    return 0;
+}
+
 
 int main(void)
 {
@@ -103,6 +115,8 @@ int main(void)
                 tetri_one.update_shape(rotate);
                 limits = tetri_one.get_boundary();
                 rotate = 0;
+                int correction = xaxis_correction(limits, x_max_scaled);
+                tetri_one.update_position(correction, 0);
             };
         };
 
@@ -115,6 +129,8 @@ int main(void)
                 limits = tetri_one.get_boundary();
                 rotate = 0;
                 reset = true;
+                int correction = xaxis_correction(limits, x_max_scaled);
+                tetri_one.update_position(correction, 0);
             }
 
         };
