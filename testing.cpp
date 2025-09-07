@@ -71,25 +71,35 @@ int main(void)
 
     const int x_max_scaled = (int) screenWidth / scale - 1;
 
-    InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
+    //randomness of the position
+    random_device pos_rd;
+    mt19937 pos_gen(pos_rd());
+    uniform_int_distribution<> pos_distrib(0, x_max_scaled);
 
-    int x = 0;
-    int y = 0;
+    //randomness of the rotation;
+    random_device rot_rd;
+    mt19937 rot_gen(rot_rd());
+    uniform_int_distribution<> rot_distrib(0, 3);
 
-    LShape tetri_one = LShape(x, y, 0);
+    //chose the values for the random
+    int x = pos_distrib(pos_gen); // these can be random initialized with
+    int y = 0; // these can be random initialized with
+    int init_rotation = rot_distrib(rot_rd) * 90;
+
+    // create the shape and do any xaxis correction
+    LShape tetri_one = LShape(x, y, init_rotation);
     Boundary limits = tetri_one.get_boundary();
+    int init_corr = xaxis_correction(limits, x_max_scaled);
+    tetri_one.update_position(init_corr, 0);
+    limits = tetri_one.get_boundary();
+    
+
+
     int rotate = 0;
     bool reset = false;
     int delta_x = 0;
-    // vector<Pixel> shape = tetri_one.get_shape();
-    // std::cout << "Size is " << tetri_one.get_shape().size();
 
-    // for (auto block : shape){
-    //     std::cout << "x is " << block.x << "\n";
-    //     std::cout << "y is " << block.y << "\n";
-    //     std::cout << "---------" << "\n";
-    // }
-
+    InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
 
     SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
@@ -108,10 +118,10 @@ int main(void)
         if (IsKeyDown(KEY_C) && (rotate != -1)){
             rotate = 1;
             // tetri_one.update_shape(1);
-            cout << "Yes" << "\n";
+            // cout << "Yes" << "\n";
         } else{
             if (rotate == 1){
-                cout << "Update" << "\n";
+                // cout << "Update" << "\n";
                 tetri_one.update_shape(rotate);
                 limits = tetri_one.get_boundary();
                 rotate = 0;
@@ -137,7 +147,6 @@ int main(void)
 
         // move left
         if (IsKeyDown(KEY_LEFT)){
-            cout << "left arrow is " << "\n";
             if (limits.x_min == 0){
                 delta_x = 0;
             }

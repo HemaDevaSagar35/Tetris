@@ -34,12 +34,10 @@ class LShape {
         LShape (int x, int y, int rotation) {
 
             create_shape(x, y);
-            int start = 0;
-            while (start < rotation){
+            this->rotation = 0;
+            while (this->rotation < rotation){
                 update_shape(1);
-                start += 90;
             }
-            this->rotation = start;
             update_boundary();
 
         };
@@ -136,6 +134,7 @@ class LShape {
             }else if (this->rotation == 180){
                 if (rotate == 1){
                     // 270
+                    cout <<"YES 270 appeared" << "\n";
                     shape[0].x = shape[0].x - 2;
                     shape[0].y = shape[0].y - 1;
 
