@@ -1,21 +1,14 @@
 
-#include <vector>
-#include <limits>
 #include "utils.h"
 
 
-
-using namespace std;
-
-
-
-class LShape {
+class JShape {
     vector <Pixel> shape;
     int rotation;
     Boundary limits{numeric_limits<int>::max(), 0, 0};
 
     public:
-        LShape (int x, int y, int rotation) {
+        JShape (int x, int y, int rotation) {
 
             create_shape(x, y);
             this->rotation = 0;
@@ -62,27 +55,27 @@ class LShape {
 
             if (this->rotation == 0){
                 if (rotate == 1){
-                    shape[0].x = shape[0].x + 2;
+                    shape[0].y = shape[0].y + 1;
 
-                    shape[1].x = shape[1].x + 1;
+                    shape[1].x = shape[1].x - 1;
+
+                    shape[2].y = shape[2].y - 1;
+                    shape[2].x = shape[2].x - 2;
+
+                    shape[3].x = shape[3].x - 1;
+                    shape[3].y = shape[3].y - 2;
+
+                    this->rotation = 90;
+                }else {
+                    shape[0].x = shape[0].x - 2;
+
+                    shape[1].x = shape[1].x - 1;
                     shape[1].y = shape[1].y - 1;
 
                     shape[2].y = shape[2].y - 2;
 
-                    shape[3].x = shape[3].x - 1;
-                    shape[3].y = shape[3].y - 1;
-
-                    this->rotation = 90;
-                }else {
-                    shape[0].y = shape[0].y + 1;
-
-                    shape[1].x = shape[1].x + 1;
-
-                    shape[2].x = shape[2].x + 2;
-                    shape[2].y = shape[2].y - 1;
-
                     shape[3].x = shape[3].x + 1;
-                    shape[3].y = shape[3].y - 2;
+                    shape[3].y = shape[3].y - 1;
 
                     this->rotation = 270;
 
@@ -90,27 +83,27 @@ class LShape {
             }
             else if (this->rotation == 90){
                 if (rotate == 1){
-                    shape[0].y = shape[0].y + 2;
-
-                    shape[1].x = shape[1].x + 1;
-                    shape[1].y = shape[1].y + 1;
-
-                    shape[2].x = shape[2].x + 2;
-
-                    shape[3].x = shape[3].x + 1;
-                    shape[3].y = shape[3].y - 1;
-
-                    this->rotation = 180;
-                }else {
+                    shape[0].y = shape[0].y + 1;
                     shape[0].x = shape[0].x - 2;
 
                     shape[1].x = shape[1].x - 1;
-                    shape[1].y = shape[1].y + 1;
 
-                    shape[2].y = shape[2].y + 2;
+                    shape[2].y = shape[2].y - 1;
 
                     shape[3].x = shape[3].x + 1;
-                    shape[3].y = shape[3].y + 1;
+
+                    this->rotation = 180;
+                }else {
+                    
+                    shape[0].y = shape[0].y - 1;
+
+                    shape[1].x = shape[1].x + 1;
+
+                    shape[2].y = shape[2].y + 1;
+                    shape[2].x = shape[2].x + 2;
+
+                    shape[3].x = shape[3].x + 1;
+                    shape[3].y = shape[3].y + 2;
 
                     this->rotation = 0;
 
@@ -118,55 +111,56 @@ class LShape {
             }else if (this->rotation == 180){
                 if (rotate == 1){
                     // 270
-                    cout <<"YES 270 appeared" << "\n";
-                    shape[0].x = shape[0].x - 2;
-                    shape[0].y = shape[0].y - 1;
+                    //cout <<"YES 270 appeared" << "\n";
+                    shape[0].y = shape[0].y - 2;
 
-                    shape[1].x = shape[1].x - 1;
+                    shape[1].x = shape[1].x + 1;
+                    shape[1].y = shape[1].y - 1;
 
-                    shape[2].y = shape[2].y + 1;
+                    shape[2].x = shape[2].x + 2;
 
                     shape[3].x = shape[3].x + 1;
+                    shape[3].y = shape[3].y + 1;
 
                     this->rotation = 270;
                 }else{
                     // 90
-                    shape[0].y = shape[0].y - 2;
+                    shape[0].y = shape[0].y - 1;
+                    shape[0].x = shape[0].x + 2;
 
-                    shape[1].x = shape[1].x - 1;
-                    shape[1].y = shape[1].y - 1;
+                    shape[1].x = shape[1].x + 1;
 
-                    shape[2].x = shape[2].x - 2;
+                    shape[2].y = shape[2].y + 1;
 
                     shape[3].x = shape[3].x - 1;
-                    shape[3].y = shape[3].y + 1;
 
                     this->rotation = 90;
                 }
             } else if (this->rotation == 270){
                 if (rotate == 1){
                     // 360
-                    shape[0].y = shape[0].y - 1;
+                    shape[0].x = shape[0].x + 2;
 
-                    shape[1].x = shape[1].x - 1;
+                    shape[1].x = shape[1].x + 1;
+                    shape[1].y = shape[1].y + 1;
 
-                    shape[2].x = shape[2].x - 2;
-                    shape[2].y = shape[2].y + 1;
+                    shape[2].y = shape[2].y + 2;
 
                     shape[3].x = shape[3].x - 1;
-                    shape[3].y = shape[3].y + 2;
+                    shape[3].y = shape[3].y + 1;
                     
                     this->rotation = 0;
                 }else{
                     // 180
-                    shape[0].x = shape[0].x + 2;
-                    shape[0].y = shape[0].y + 1;
+                    shape[0].y = shape[0].y + 2;
 
-                    shape[1].x = shape[1].x + 1;
+                    shape[1].x = shape[1].x - 1;
+                    shape[1].y = shape[1].y + 1;
 
-                    shape[2].y = shape[2].y - 1;
+                    shape[2].x = shape[2].x - 2;
 
                     shape[3].x = shape[3].x - 1;
+                    shape[3].y = shape[3].y - 1;
 
                     this->rotation = 180;
 
@@ -188,7 +182,7 @@ class LShape {
             Pixel block3(x, y + 2);
             shape.push_back(block3);
 
-            Pixel block4(x + 1, y + 2);
+            Pixel block4(x - 1, y + 2);
             shape.push_back(block4);
 
             update_boundary();
