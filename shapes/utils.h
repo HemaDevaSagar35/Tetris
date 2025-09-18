@@ -1,5 +1,9 @@
 #pragma once
 
+#include <limits>
+
+using namespace std;
+
 class Pixel{
     public:
         int x;
@@ -31,16 +35,7 @@ class Shape {
         Boundary limits{numeric_limits<int>::max(), 0, 0};
 
     public:
-        Shape (int x, int y, int rotation) {
-
-            create_shape(x, y);
-            this->rotation = 0;
-            while (this->rotation < rotation){
-                update_shape(1);
-            }
-            update_boundary();
-
-        };
+        Shape (int x, int y, int rotation) {};
 
         vector <Pixel> get_shape() {
             return shape;
@@ -70,7 +65,7 @@ class Shape {
             update_boundary();
         };
 
-        void update_shape(int rotate){
+        virtual void update_shape(int rotate){
             // 0 -> 90 & 0 -> -90
             // 90 -> 180 & 90 -> 0
             // 180 -> 270 & 270 -> 180
@@ -80,8 +75,10 @@ class Shape {
             
         }
 
+        virtual ~Shape() {}
+
     protected:
-        void create_shape(int x, int y){
+        virtual void create_shape(int x, int y){
             Pixel block1(x, y);
             shape.push_back(block1);
 
@@ -97,6 +94,16 @@ class Shape {
             update_boundary();
 
         };
+
+        void initialize_shape(int x, int y, int rotation){
+            create_shape(x, y);
+            this->rotation = 0;
+            while (this->rotation < rotation){
+                update_shape(1);
+            }
+            update_boundary();
+
+        }
     
         void update_boundary(){
             limits.x_min = numeric_limits<int>::max();

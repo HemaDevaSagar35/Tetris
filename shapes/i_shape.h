@@ -10,9 +10,11 @@ using namespace std;
 class IShape : public Shape{
 
     public:
-        IShape(int x, int y, int rotation) : Shape(x, y, rotation) {}
+        IShape(int x, int y, int rotation) : Shape(x, y, rotation) {
+            initialize_shape(x, y, rotation);
+        }
 
-        void update_shape(int rotate) override{
+        void update_shape(int rotate) override {
             if (this->rotation == 0){
                 
                 if (rotate == 1){
@@ -45,7 +47,7 @@ class IShape : public Shape{
                     this->rotation = 270;
 
                 }
-            }elif (this->rotation == 90){
+            }else if (this->rotation == 90){
 
                 if (rotate == 1){
                     // 90 -> 180
@@ -76,7 +78,7 @@ class IShape : public Shape{
                     this->rotation = 0;
 
                 }
-            }elif (this->rotation == 180){
+            }else if (this->rotation == 180){
 
                 //180 -> 270
 
@@ -111,7 +113,7 @@ class IShape : public Shape{
 
                 }
 
-            }elif (this->rotation == 270){
+            }else if (this->rotation == 270){
 
                 if (rotate == 1){
                     // 270 -> 0
@@ -142,7 +144,8 @@ class IShape : public Shape{
 
                 }
             }
-        }
+            update_boundary();
+        };
     
     protected:
         void create_shape(int x, int y) override{
@@ -157,5 +160,5 @@ class IShape : public Shape{
 
             Pixel block4(x+3, y);
             shape.push_back(block4);
-        }
-}
+        };
+};

@@ -7,6 +7,7 @@
 
 #include "shapes/l_shape.h"
 #include "shapes/j_shape.h"
+#include "shapes/i_shape.h"
 #include "shapes/utils.h"
 
 
@@ -95,7 +96,7 @@ int main(void)
     // create the shape and do any xaxis correction
     // LShape tetri_one = LShape(x, y, init_rotation);
     // cout << x << " " << y << "\n";
-    JShape tetri_one = JShape(x, y, 0);
+    IShape tetri_one = IShape(x, y, init_rotation);
     Boundary limits = tetri_one.get_boundary();
     int init_corr = xaxis_correction(limits, x_max_scaled);
     tetri_one.update_position(init_corr, 0);
