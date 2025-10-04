@@ -95,7 +95,7 @@ class Shape {
 
         };
 
-        void initialize_shape(int x, int y, int rotation){
+        virtual void initialize_shape(int x, int y, int rotation){
             create_shape(x, y);
             this->rotation = 0;
             while (this->rotation < rotation){

@@ -11,6 +11,7 @@
 #include "shapes/s_shape.h"
 #include "shapes/z_shape.h"
 #include "shapes/t_shape.h"
+#include "shapes/o_shape.h"
 #include "shapes/utils.h"
 
 
