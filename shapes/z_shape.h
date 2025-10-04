@@ -8,7 +8,7 @@ class ZShape : public Shape{
 
     public:
         ZShape(int x, int y, int rotation) : Shape(x, y, rotation) {
-            initialize_shape(x, y, rotation)
+            initialize_shape(x, y, rotation);
 
         };
 
@@ -62,7 +62,7 @@ class ZShape : public Shape{
                     shape[1].x = shape[1].x - 1;
                     shape[1].y = shape[1].y - 1;
 
-                    shape[3].x = shape[3].x + 1
+                    shape[3].x = shape[3].x + 1;
                     shape[3].y = shape[3].y - 1;
 
                     this->rotation = 0;
@@ -112,7 +112,7 @@ class ZShape : public Shape{
                 }else{
                     // 270 -> 180
                     shape[0].x = shape[0].x + 2;
-                    shape[0].x = shape[0].x - 1;
+                    shape[0].y = shape[0].y - 1;
 
                     shape[1].x = shape[1].x + 1;
 
@@ -124,6 +124,7 @@ class ZShape : public Shape{
 
                 }
             }
+            update_boundary();
 
         };
     
@@ -143,4 +144,4 @@ class ZShape : public Shape{
 
         };
 
-}
+};
