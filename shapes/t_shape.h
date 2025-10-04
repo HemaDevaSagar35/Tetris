@@ -8,7 +8,7 @@ class TShape : public Shape{
 
     public:
         TShape(int x, int y, int rotation) : Shape(x, y, rotation) {
-            initialize_shape(x, y, rotation)
+            initialize_shape(x, y, rotation);
 
         };
 
@@ -123,7 +123,7 @@ class TShape : public Shape{
 
                 }
             }
-
+            update_boundary();
         };
     
     protected:
@@ -142,4 +142,4 @@ class TShape : public Shape{
 
         };
 
-}
+};

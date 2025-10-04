@@ -10,6 +10,7 @@
 #include "shapes/i_shape.h"
 #include "shapes/s_shape.h"
 #include "shapes/z_shape.h"
+#include "shapes/t_shape.h"
 #include "shapes/utils.h"
 
 
@@ -98,7 +99,7 @@ int main(void)
     // create the shape and do any xaxis correction
     // LShape tetri_one = LShape(x, y, init_rotation);
     // cout << x << " " << y << "\n";
-    ZShape tetri_one = ZShape(x, y, init_rotation);
+    TShape tetri_one = TShape(x, y, init_rotation);
     Boundary limits = tetri_one.get_boundary();
     int init_corr = xaxis_correction(limits, x_max_scaled);
     tetri_one.update_position(init_corr, 0);
