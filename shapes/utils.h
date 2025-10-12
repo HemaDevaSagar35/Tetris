@@ -1,29 +1,38 @@
 #pragma once
 
 #include <limits>
+#include<raylib.h>
 
 using namespace std;
 
-class Pixel{
-    public:
-        int x;
-        int y;
-        Pixel(int x, int y){
-            this->x = x;
-            this->y = y;
-        };
+struct Pixel{
+    int x;
+    int y;
+    Pixel(int x, int y){
+        this->x = x;
+        this->y = y;
+    };
 };
 
-class Boundary{
-    public:
-        int x_min;
-        int x_max;
-        int y_max;
-        Boundary(int x_min, int x_max, int y_max){
-            this->x_min = x_min;
-            this->x_max = x_max;
-            this->y_max = y_max;
-        };
+struct PixelWithColor : public Pixel{
+    Color color;
+    PixelWithColor(int x, int y, Color c){
+        this->x = x;
+        this->y = y;
+        this->color = c;
+
+    };
+};
+
+struct Boundary{
+    int x_min;
+    int x_max;
+    int y_max;
+    Boundary(int x_min, int x_max, int y_max){
+        this->x_min = x_min;
+        this->x_max = x_max;
+        this->y_max = y_max;
+    };
 };
 
 
@@ -116,3 +125,119 @@ class Shape {
             };
         };
 };
+
+
+
+class Board{
+    vector<vector<Color>> board;
+    bool lines_filled = False;
+    vector<int> line_formed;
+    //w and h here are width and height. correspondiing index limit would be 
+
+
+    public:
+        Board(int w, int h){
+            // initialize everything with white board
+            for(i = 0; i < h;i++){
+                vector<PixelWithColor> hstrip;
+                for(j=0;j<w;j++){
+                    
+                    Color p = RAYWHITE;
+                    hstrip.push_back(p);
+                    
+                }
+                this->board.push_back(hstrip);
+                this->line_formed.push_back(0);
+
+            };
+        };
+
+        void latch_on(vector<Pixel> terimone, Color color){
+            for(auto p : terimone){
+                int x = p.x;
+                int y = p.y;
+                board[y][x] = color;
+            };
+
+            line_formation();
+        };
+
+
+        bool is_lines_formed(){
+            return lines_filled;
+        }
+
+        vector<int> get_line_indexes(){
+            return line_formed;
+        }
+    
+        void line_formation(){
+            // here the task is to check if a line got filled completely?
+            int lines_filled_counter = 0
+            for(int i = 0; i < board.size();i++){
+                int counter = 0;
+                for (int j = 0;j < board[i].size();j++){
+                    if (board[i][j].color == RAYWHITE){
+                        counter +=1;
+                        break;
+                    };
+                }
+                
+                line_formed[i] = 1 - counter;
+                lines_filled_counter = lines_filled_counter + 1 - counter;
+            }
+
+            lines_filled = lines_filled_counter > 0;
+        };
+
+
+        void clear_lines(){
+            // clear the lines simply - without animation on the disappearance
+            // calculate downward moment
+            vector<int> deltas = calculate_delta();
+            clean_lines_fully();
+
+            for(int i = len(board) - 2; i >= 0; i--){
+                if (line_formed[i] == 1){
+                    continue;
+                }
+                int del_y = deltas[i];
+                for (int j = 0;j < board[i].size();j++){
+                    board[i+del_y][j] = board[i][j];
+                }
+            }
+            fill(this->line_formed.begin(), this->line_formed.end(), 0);
+            this->lines_filled = false;
+
+        }
+
+
+
+    protected:
+        vector<int> calculate_delta(){
+            vector<int> deltas(line_formed.size(), 0);
+
+            int counter = 0;
+            for (int i = line_formed.size() - 1; i > 0; i--){
+                if (line_formed[i] == 1){
+                    counter += 1;
+                }
+                deltas[i - 1] = counter;
+            }
+
+            return deltas;
+        }
+
+        void clean_lines_fully(){
+            for(int i = 0;i<line_formed.size();i++){
+                if (line_formed[i] == 0){
+                    continue;
+                }
+
+                for (int j = 0;j < board[i].size();j++){
+                    board[i][j] = RAYWHITE;
+                };
+            };
+        }
+
+}
