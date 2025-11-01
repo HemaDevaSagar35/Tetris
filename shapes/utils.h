@@ -5,6 +5,14 @@
 
 using namespace std;
 
+
+
+inline bool operator==(const Color& a, const Color& b){
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+inline bool operator!=(const Color& a, const Color& b) { return !(a==b);}
+
 struct Pixel{
     int x;
     int y;
@@ -15,13 +23,9 @@ struct Pixel{
 };
 
 struct PixelWithColor : public Pixel{
-    Color color;
-    PixelWithColor(int x, int y, Color c){
-        this->x = x;
-        this->y = y;
-        this->color = c;
 
-    };
+    Color color;
+    PixelWithColor(int x, int y, Color c) : Pixel(x, y), color(c) {}
 };
 
 struct Boundary{
@@ -129,18 +133,19 @@ class Shape {
 
 
 class Board{
-    vector<vector<Color>> board;
-    bool lines_filled = False;
+    
+    bool lines_filled = false;
     vector<int> line_formed;
+    int width;
+    int height;
     //w and h here are width and height. correspondiing index limit would be 
-
-
     public:
+        vector<vector<Color>> board;
         Board(int w, int h){
             // initialize everything with white board
-            for(i = 0; i < h;i++){
-                vector<PixelWithColor> hstrip;
-                for(j=0;j<w;j++){
+            for(int i = 0; i < h;i++){
+                vector<Color> hstrip;
+                for(int j=0;j<w;j++){
                     
                     Color p = RAYWHITE;
                     hstrip.push_back(p);
@@ -150,6 +155,8 @@ class Board{
                 this->line_formed.push_back(0);
 
             };
+            this->width = w;
+            this->height = h;
         };
 
         void latch_on(vector<Pixel> terimone, Color color){
@@ -173,11 +180,11 @@ class Board{
     
         void line_formation(){
             // here the task is to check if a line got filled completely?
-            int lines_filled_counter = 0
+            int lines_filled_counter = 0;
             for(int i = 0; i < board.size();i++){
                 int counter = 0;
                 for (int j = 0;j < board[i].size();j++){
-                    if (board[i][j].color == RAYWHITE){
+                    if (board[i][j] == RAYWHITE){
                         counter +=1;
                         break;
                     };
@@ -197,7 +204,7 @@ class Board{
             vector<int> deltas = calculate_delta();
             clean_lines_fully();
 
-            for(int i = len(board) - 2; i >= 0; i--){
+            for(int i = board.size() - 2; i >= 0; i--){
                 if (line_formed[i] == 1){
                     continue;
                 }
@@ -211,7 +218,24 @@ class Board{
 
         }
 
+        int get_board_width(){
+            return this->width;
+        }
 
+        int get_board_height(){
+            return this->height;
+        }
+
+        // index overloading
+        vector<Color>& operator[](int i){
+            if (i >= height) throw out_of_range("board height out of range");
+            return board[i];
+        }
+
+        const vector<Color>& operator[](int i) const {
+            if (i >= height) throw out_of_range("board height out of range");
+            return board[i];
+        }
 
     protected:
         vector<int> calculate_delta(){
@@ -240,4 +264,4 @@ class Board{
             };
         }
 
-}
+};
