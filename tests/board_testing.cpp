@@ -312,6 +312,7 @@ TEST_F(BoardTest, LatchWorks){
 
 
 TEST_F(BoardTest, ClearLinesWorks){
+    // TEST - 1
     vector<Pixel> tetri = t1.get_shape();
     b1.latch_on(tetri, BLACK);
 
@@ -358,10 +359,138 @@ TEST_F(BoardTest, ClearLinesWorks){
 
     EXPECT_EQ(step_1, true) << "line at index " << 2 << " got disturbed";
 
+    // TEST - 2
 
+    vector<Pixel> tetri2 = t2.get_shape();
+    b2.latch_on(tetri2, BLACK);
 
+    b2.clear_lines();
 
+    bool line_filled_2 = b2.is_lines_formed();
+    EXPECT_EQ(line_filled_2, false) << "line formation is mis-recognized as true";
 
+    vector<int> lines_formed_expected_2(20, 0);
+    vector<int> lines_formed_2 = b2.get_line_indexes();
+    EXPECT_EQ(lines_formed_2, lines_formed_expected_2) << "lines counter is not matching";
+
+    int w2 = b2.get_board_width();
+    int h2 = b2.get_board_height();
+    bool step_2 = true;
+    for(int i = 0;i<w2;i++){
+        if ((i != 3) && (b2[h2-1][i] != GREEN)){
+            step_2 = false;
+            break;
+        }
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 0 << " got disturbed";
+
+    step_2 = true;
+    if(b2[h2-2][1] != VIOLET){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 2][7] != VIOLET){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 2][8] != VIOLET){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 2][9] != VIOLET){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 2][2] != BLACK){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 2][3] != BLACK){
+        step_2 = false;
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 1 << " got disturbed";
+
+    step_2 = true;
+
+    if(b2[h2 - 3][1] != ORANGE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 3][6] != ORANGE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 3][7] != ORANGE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 3][8] != ORANGE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 3][9] != ORANGE){
+        step_2 = false;
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 2 << " got disturbed";
+
+    step_2 = true;
+    if(b2[h2 - 4][0] != BLUE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 4][1] != BLUE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 4][6] != BLUE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 4][7] != BLUE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 4][8] != BLUE){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 4][9] != BLUE){
+        step_2 = false;
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 3 << " got disturbed";
+
+    step_2 = true;
+    if(b2[h2 - 5][6] != YELLOW){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 5][8] != YELLOW){
+        step_2 = false;
+    }
+
+    if(b2[h2 - 5][9] != YELLOW){
+        step_2 = false;
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 4 << " got disturbed";
+
+    step_2 = true;
+    if(b2[h2 - 6][6] != BEIGE){
+        step_2 = false;
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 5 << " got disturbed";
+
+    step_2 = true;
+    if(b2[h2 - 7][6] != BEIGE){
+        step_2 = false;
+    }
+
+    EXPECT_EQ(step_2, true) << "line at index " << 6 << " got disturbed";
 
 
 }
