@@ -2,6 +2,7 @@
 #include <raylib.h>
 #include "../shapes/utils.h"
 #include "../shapes/t_shape.h"
+#include "../shapes/l_shape.h"
 
 // g++ -std=c++17 tests/board_testing.cpp \
 //   -isystem "$(brew --prefix googletest)/include" \
@@ -14,12 +15,19 @@
 class BoardTest : public testing::Test{
     protected:
         Board b1;
+        Board b2;
         TShape t1;
-        BoardTest() : b1(10, 20), t1(3, 16, 180) {}
+        LShape t2;
+        BoardTest() : b1(10, 20), t1(3, 16, 180), b2(10, 20), t2(1, 16, 180) {}
 
         void SetUp() override {
+            // Board 1
             int w = b1.get_board_width();
             int h = b1.get_board_height();
+
+            int w2 = b2.get_board_width();
+            int h2 = b2.get_board_height();
+
             for (int i = 0;i<w;i++){
                 if (i != 4){
                     b1[h - 1][i] = GREEN;
@@ -38,6 +46,40 @@ class BoardTest : public testing::Test{
                 }
 
             }
+
+            // Board 2
+            for(int i = 0;i<w;i++){
+                if(i != 3){
+                    b2[h - 1][i] = GREEN;
+                    b2[h - 2][i] = GREEN;
+                    b2[h - 3][i] = GREEN;
+                }
+            }
+
+            b2[h - 4][1] = VIOLET;
+            b2[h - 4][7] = VIOLET;
+            b2[h - 4][8] = VIOLET;
+            b2[h - 4][9] = VIOLET;
+
+            b2[h - 5][1] = ORANGE;
+            b2[h - 5][6] = ORANGE;
+            b2[h - 5][7] = ORANGE;
+            b2[h - 5][8] = ORANGE;
+            b2[h - 5][9] = ORANGE;
+
+            b2[h - 6][0] = BLUE;
+            b2[h - 6][1] = BLUE;
+            b2[h - 6][6] = BLUE;
+            b2[h - 6][7] = BLUE;
+            b2[h - 6][8] = BLUE;
+            b2[h - 6][9] = BLUE;
+
+            b2[h - 7][6] = YELLOW;
+            b2[h - 7][8] = YELLOW;
+            b2[h - 7][9] = YELLOW;
+
+            b2[h - 8][6] = BEIGE;
+            b2[h - 9][6] = BEIGE;
         }
 
 };
@@ -46,16 +88,17 @@ TEST_F(BoardTest, LatchWorks){
 
 
     vector<Pixel> tetri = t1.get_shape();
+    vector<Pixel> tetri2 = t2.get_shape();
+    
+
     b1.latch_on(tetri, BLACK);
-    // cout << tetri[0].x << "  " << tetri[0].y << "\n";
-    // cout << tetri[1].x << "  " <<  tetri[1].y << "\n";
-    // cout << tetri[2].x << "  " <<  tetri[2].y << "\n";
-    // cout << tetri[3].x << "  " <<  tetri[3].y << "\n";
+    b2.latch_on(tetri2, BLACK);
 
     //make sure latching worked properly
     // Type one
     int w = b1.get_board_width();
     int h = b1.get_board_height();
+
     bool step_1 = true;
     for (int i = 0;i<w;i++){
         if ((i != 4) && (b1[h - 1][i] != GREEN)){
@@ -113,7 +156,160 @@ TEST_F(BoardTest, LatchWorks){
     EXPECT_EQ(lines_formed, lines_formed_expected) << "lines counter is not matching";
 
 
+
+    // LATCHING FOR BOARD 2
+    int w2 = b2.get_board_width();
+    int h2 = b2.get_board_height();
+
+    step_1 = true;
+    for (int i = 0;i<w2;i++){
+        if ((i != 3) && (b2[h2 - 1][i] != GREEN)){
+            step_1 = false;
+            break;
+        }
+    }
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << 0 << " got disturbed";
+
+    step_1 = true;
+    for (int i = 0;i<w2;i++){
+        if ((i != 3) && (b2[h2 - 2][i] != GREEN) && (b2[h2 - 3][i] != GREEN)){
+            step_1 = false;
+            break;
+        }
+    }
+
+
+    if(b2[h2 - 2][3] != BLACK){
+        step_1 = false;
+    }
+
+    if(b2[h2 - 3][3] != BLACK){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "1 & 2" << " got disturbed";
+
+    step_1 = true;
+    if(b2[h - 4][1] != VIOLET){
+        step_1 = false;
+    }
+
+    if(b2[h - 4][7] != VIOLET){
+        step_1 = false;
+    }
+
+    if(b2[h - 4][8] != VIOLET){
+        step_1 = false;
+    }
+
+    if(b2[h - 4][9] != VIOLET){
+        step_1 = false;
+    }
+
+    if(b2[h - 4][2] != BLACK){
+        step_1 = false;
+    }
+
+    if(b2[h - 4][3] != BLACK){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "3" << " got disturbed";
+
+    step_1 = true;
+    if(b2[h - 5][1] != ORANGE){
+        step_1 = false;
+    }
+
+    if(b2[h - 5][6] != ORANGE){
+        step_1 = false;
+    }
+
+    if(b2[h - 5][7] != ORANGE){
+        step_1 = false;
+    }
+
+    if(b2[h - 5][8] != ORANGE){
+        step_1 = false;
+    }
+
+    if(b2[h - 5][9] != ORANGE){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "4" << " got disturbed";
+
+    step_1 = true;
+
+    if(b2[h - 6][0] != BLUE){
+        step_1 = false;
+    }
+
+    if(b2[h - 6][1] != BLUE){
+        step_1 = false;
+    }
+
+    if(b2[h - 6][6] != BLUE){
+        step_1 = false;
+    }
+
+    if(b2[h - 6][7] != BLUE){
+        step_1 = false;
+    }
+
+    if(b2[h - 6][8] != BLUE){
+        step_1 = false;
+    }
+
+    if(b2[h - 6][9] != BLUE){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "5" << " got disturbed";
+
+    step_1 = true;
+    if(b2[h - 7][6] != YELLOW){
+        step_1 = false;
+    }
+
+    if(b2[h - 7][8] != YELLOW){
+        step_1 = false;
+    }
+
+    if(b2[h - 7][9] != YELLOW){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "6" << " got disturbed";
+
+    step_1 = true;
+    if(b2[h - 8][6] != BEIGE){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "7" << " got disturbed";
+
+    step_1 = true;
+    if(b2[h - 9][6] != BEIGE){
+        step_1 = false;
+    }
+
+    EXPECT_EQ(step_1, true) << "board 2: line at index " << "8" << " got disturbed";
+
+    bool line_filled_2 = b2.is_lines_formed();
+    EXPECT_EQ(line_filled_2, true) << "board 2: line formation is not recognized";
+
+
+    vector<int> lines_formed_expected_2(20, 0);
+    lines_formed_expected_2[18] = 1;
+    lines_formed_expected_2[17] = 1;
+    // lines_formed_expected[]
+
+    vector<int> lines_formed_2 = b2.get_line_indexes();
+    EXPECT_EQ(lines_formed_2, lines_formed_expected_2) << "board 2: lines counter is not matching";
+
 }
+
 
 TEST_F(BoardTest, ClearLinesWorks){
     vector<Pixel> tetri = t1.get_shape();
