@@ -309,7 +309,7 @@ TEST_F(BoardTest, LatchWorks){
     vector<int> lines_formed_2 = b2.get_line_indexes();
     EXPECT_EQ(lines_formed_2, lines_formed_expected_2) << "board 2: lines counter is not matching";
 
-}
+};
 
 
 TEST_F(BoardTest, ClearLinesWorks){
@@ -494,7 +494,7 @@ TEST_F(BoardTest, ClearLinesWorks){
     EXPECT_EQ(step_2, true) << "line at index " << 6 << " got disturbed";
 
 
-}
+};
 
 
 
@@ -536,11 +536,18 @@ class GameTest : public testing::Test{
 
         }
 
-}
+};
 
 TEST_F(GameTest, OnboardWorks){
 
-    bool output = onboard(t1, b1, 1)
+    bool output = onboard(t1, b1, 1);
     EXPECT_EQ(output, true) << "It should be onboarded";
+};
+
+TEST_F(GameTest, ValidMoveWorks){
+
+    bool output = validmove(t1, b1, 1, 0, 0);
+    EXPECT_EQ(output, true) << "It is a valid move, why is it saying otherwise?";
+
 }
 
