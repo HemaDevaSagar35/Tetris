@@ -3,6 +3,7 @@
 #include "../shapes/utils.h"
 #include "../shapes/t_shape.h"
 #include "../shapes/l_shape.h"
+#include "../game/utils.h"
 
 // g++ -std=c++17 tests/board_testing.cpp \
 //   -isystem "$(brew --prefix googletest)/include" \
@@ -494,3 +495,52 @@ TEST_F(BoardTest, ClearLinesWorks){
 
 
 }
+
+
+
+// This is to test 
+class GameTest : public testing::Test{
+    
+    protected:
+        Board b1;
+        LShape t1;
+
+        GameTest() : b1(10, 20), t1(7, 16, 180) {}
+        void SetUp() override {
+            // first line
+            int h = b1.get_board_height();
+            int w = b1.get_board_width();
+
+            for(int i = 0;i<w;i++){
+                if ((i != 3) && (i != 4)){
+                    b1[h - 1][i] = VIOLET;
+                }
+            }
+
+            // second line
+            for(int i = 0;i<w;i++){
+                if (i != w - 1){
+                    b1[h - 2][i] = ORANGE;
+                }
+            }
+
+            // third line
+            b1[h - 3][3] = YELLOW;
+
+            // fourth line
+            b1[h - 4][3] = YELLOW;
+
+            // five line
+            b1[h - 4][3] = YELLOW;
+
+
+        }
+
+}
+
+TEST_F(GameTest, OnboardWorks){
+
+    bool output = onboard(t1, b1, 1)
+    EXPECT_EQ(output, true) << "It should be onboarded";
+}
+
