@@ -6,10 +6,12 @@
 
 
 
-bool onboard(Shape tetri, Board board, int overlap = 1){
+bool onboard(Shape* tetri, Board board, int overlap = 1){
     // check where the tetrimone is ready to onboarded onto the board
 
-    vector<Pixel> tetrimone = tetri.get_shape();
+    vector<Pixel> tetrimone = tetri->get_shape();
+    int w = board.get_board_width();
+    int h = board.get_board_height();
 
     int offset = 0;
     if (overlap > 0){
@@ -21,7 +23,7 @@ bool onboard(Shape tetri, Board board, int overlap = 1){
         int x = tetrimone[i].x;
         int y = tetrimone[i].y;
 
-        if (board[y + offset][x] != RAYWHITE){
+        if (((y + offset) >= h) || (board[y + offset][x] != RAYWHITE)){
             return true;
         }
     }
@@ -30,14 +32,14 @@ bool onboard(Shape tetri, Board board, int overlap = 1){
 };
 
 
-bool validmove(Shape tetrimone, Board board, int rotation = 0, int delta_x = 0, int delta_y = 0){
+bool validmove(Shape* tetrimone, Board board, int rotation = 0, int delta_x = 0, int delta_y = 0){
 
     // check whether movement can be made
     if ((rotation == 1) || (rotation == -1)){
-        tetrimone.update_shape(rotation);
+        tetrimone->update_shape(rotation);
     }
     if ((delta_x != 0) || (delta_y != 0)){
-        tetrimone.update_position(delta_x, delta_y);
+        tetrimone->update_position(delta_x, delta_y);
     }
 
     bool overlapped = onboard(tetrimone, board, 0);

@@ -13,6 +13,7 @@
 #include "shapes/t_shape.h"
 #include "shapes/o_shape.h"
 #include "shapes/utils.h"
+#include "game/utils.h"
 
 
 
@@ -82,6 +83,9 @@ int main(void)
 
     const int x_max_scaled = (int) screenWidth / scale - 1;
 
+    const int board_w = (int) screenWidth / scale;
+    const int board_h = (int) screenHeight / scale;
+
     //randomness of the position
     random_device pos_rd;
     mt19937 pos_gen(pos_rd());
@@ -100,11 +104,12 @@ int main(void)
     // create the shape and do any xaxis correction
     // LShape tetri_one = LShape(x, y, init_rotation);
     // cout << x << " " << y << "\n";
-    TShape tetri_one = TShape(x, y, init_rotation);
-    Boundary limits = tetri_one.get_boundary();
+    Shape* tetri_one = nullptr;
+    tetri_one = new TShape(x, y, init_rotation);
+    Boundary limits = tetri_one->get_boundary();
     int init_corr = xaxis_correction(limits, x_max_scaled);
-    tetri_one.update_position(init_corr, 0);
-    limits = tetri_one.get_boundary();
+    tetri_one->update_position(init_corr, 0);
+    limits = tetri_one->get_boundary();
     
 
 
@@ -112,6 +117,7 @@ int main(void)
     bool reset = false;
     int delta_x = 0;
 
+    Board board(board_w, board_h);
     InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
 
     SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
@@ -135,11 +141,11 @@ int main(void)
         } else{
             if (rotate == 1){
                 // cout << "Update" << "\n";
-                tetri_one.update_shape(rotate);
-                limits = tetri_one.get_boundary();
+                tetri_one->update_shape(rotate);
+                limits = tetri_one->get_boundary();
                 rotate = 0;
                 int correction = xaxis_correction(limits, x_max_scaled);
-                tetri_one.update_position(correction, 0);
+                tetri_one->update_position(correction, 0);
             };
         };
 
@@ -148,12 +154,12 @@ int main(void)
             rotate = -1;
         } else{
             if (rotate == -1){
-                tetri_one.update_shape(rotate);
-                limits = tetri_one.get_boundary();
+                tetri_one->update_shape(rotate);
+                limits = tetri_one->get_boundary();
                 rotate = 0;
                 reset = true;
                 int correction = xaxis_correction(limits, x_max_scaled);
-                tetri_one.update_position(correction, 0);
+                tetri_one->update_position(correction, 0);
             }
 
         };
@@ -168,8 +174,8 @@ int main(void)
             };
         }else{
             if (delta_x == -1){
-                tetri_one.update_position(delta_x, 0);
-                limits = tetri_one.get_boundary();
+                tetri_one->update_position(delta_x, 0);
+                limits = tetri_one->get_boundary();
                 delta_x = 0;
             };
         };
@@ -186,8 +192,8 @@ int main(void)
             if (delta_x == 1){
                 // cout << "Update" << "\n";
                 // shape_testing(tetri_one.get_shape());
-                tetri_one.update_position(delta_x, 0);
-                limits = tetri_one.get_boundary();
+                tetri_one->update_position(delta_x, 0);
+                limits = tetri_one->get_boundary();
                 delta_x = 0;
             };
         };
@@ -196,9 +202,32 @@ int main(void)
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - prev);
         if ((diff.count() >= 1000) && ((limits.y_max + 1)*scale < screenHeight)) {
             prev = now;
-            tetri_one.update_position(0, 1);
+            bool detach = onboard(tetri_one, board, 1);
+            if(!detach){
+                tetri_one->update_position(0, 1);
+            }
+            else{
+                delete tetri_one;
+                tetri_one = nullptr;
+            }
         };
-        limits = tetri_one.get_boundary();
+        if (!tetri_one){
+            limits = tetri_one->get_boundary();
+        }
+
+        // CHESHVIKA
+        // CHAISHAVI
+        // SAGAR
+        // VEENILA
+        // SRINU - NANNA
+        // SUGUNA
+        // SURYA RAO - SURYA RAO - SURYA RAO
+        // HANUMANTH RAO
+        // SUDHA AMMAMA
+        // SONU
+        // chikiri
+        // oh my baby
+
         // cout << "y_max" << " " << limits.y_max << "\n";
         //----------------------------------------------------------------------------------
 
@@ -208,7 +237,10 @@ int main(void)
 
             ClearBackground(RAYWHITE);
             // DrawRectangle(ballPosition.x, ballPosition.y, scale, scale, MAROON);
-            render(tetri_one.get_shape(), scale);
+            render_board(board);
+            if (!tetri_one){
+                render(tetri_one->get_shape(), scale);
+            }
 
         EndDrawing();
         //----------------------------------------------------------------------------------
