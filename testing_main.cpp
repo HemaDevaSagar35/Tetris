@@ -17,12 +17,12 @@
 
 
 
-void render(vector<Pixel> shape, const int scale){
+void render(vector<Pixel> shape, const int scale, Color color){
     for (auto block : shape){
         // std::cout << "x is " << block.x;
         // std::cout << "y is " << block.y;
         // std::cout << "---------";
-        DrawRectangle(block.x * scale, block.y * scale, scale, scale, MAROON);
+        DrawRectangle(block.x * scale, block.y * scale, scale, scale, color);
     };
 };
 
@@ -87,6 +87,8 @@ int main(void)
     // Initialization
     //g++ testing.cpp -o testing $(pkg-config --cflags --libs raylib) -std=c++17
     //--------------------------------------------------------------------------------------
+    // ################################# 1 BELOW ARE STAGED ONLY ONCE ##################################
+    //######################### 1.1 window size and FPS ###########################################
     const int screenWidth = 400;
     const int screenHeight = 2*screenWidth;
     const int scale = screenWidth / 10;
@@ -96,6 +98,36 @@ int main(void)
     const int board_w = (int) screenWidth / scale;
     const int board_h = (int) screenHeight / scale;
 
+    Board board(board_w, board_h);
+    SetTargetFPS(60);   // Set our game to run at 60 frames-per-second
+    InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
+
+    //########################## 1.2 Tetrimones/Color Factory Setup ###################################
+    static const std::array<std::function<Shape*(int, int, int)>, 7> teri_factory = {{
+        [](int x, int y, int r) { return new OShape(x, y, r); },
+        [](int x, int y, int r) { return new IShape(x, y, r); },
+        [](int x, int y, int r) { return new TShape(x, y, r); },
+        [](int x, int y, int r) { return new LShape(x, y, r); },
+        [](int x, int y, int r) { return new JShape(x, y, r); },
+        [](int x, int y, int r) { return new SShape(x, y, r); },
+        [](int x, int y, int r) { return new ZShape(x, y, r); },
+    }};
+
+    std::vector<Color> color_factory = {
+        GRAY,
+        YELLOW,
+        GOLD,
+        ORANGE,
+        PINK,
+        MAROON,
+        GREEN,
+        SKYBLUE,
+        BLUE,
+        PURPLE,
+        VIOLET,
+        BROWN,
+    };
+    //########################## 1.3 Random states for tetrimone, position, rotation and color #############
     //randomness of the position
     random_device pos_rd;
     mt19937 pos_gen(pos_rd());
@@ -105,6 +137,18 @@ int main(void)
     random_device rot_rd;
     mt19937 rot_gen(rot_rd());
     uniform_int_distribution<> rot_distrib(0, 3);
+
+    //randomness of the tetrimone type itself;
+    random_device shape_rd;
+    mt19937 shape_gen(shape_rd());
+    uniform_int_distribution<> shape_distrib(0, 6);
+
+    //randomness on the color (NOTE: we have to see what will happen to it)
+    random_device color_rd;
+    mt19937 color_gen(color_rd());
+    uniform_int_distribution<> color_distrib(0, 11);
+    
+    
 
     //chose the values for the random
     int x = pos_distrib(pos_gen); // these can be random initialized with
@@ -131,10 +175,7 @@ int main(void)
     bool reset = false;
     int delta_x = 0;
 
-    Board board(board_w, board_h);
-    InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
-
-    SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
+    
     //--------------------------------------------------------------------------------------
     float speed = 1;
     auto prev = std::chrono::high_resolution_clock::now();
@@ -243,13 +284,6 @@ int main(void)
         }
 
 
-
-
-        // cout << "y_max" << " " << limits.y_max << "\n";
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
         BeginDrawing();
 
             ClearBackground(RAYWHITE);
@@ -258,7 +292,7 @@ int main(void)
             render_board(board, scale);
             if (tetri_one){
                 // cout << "calling the render shape too" << "\n";
-                render(tetri_one->get_shape(), scale);
+                render(tetri_one->get_shape(), scale, MAROON);
             }
 
         EndDrawing();
