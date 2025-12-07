@@ -26,6 +26,16 @@ void render(vector<Pixel> shape, const int scale){
     };
 };
 
+void render_board(Board b, const int scale){
+    int h = b.get_board_height();
+    int w = b.get_board_width();
+    for(int i = 0;i < h;i++){
+        for(int j = 0;j < w;j++){
+            DrawRectangle(j * scale, i * scale, scale, scale, b[i][j]);
+        }
+    };
+}
+
 
 class Element{
     public:
@@ -110,6 +120,10 @@ int main(void)
     int init_corr = xaxis_correction(limits, x_max_scaled);
     tetri_one->update_position(init_corr, 0);
     limits = tetri_one->get_boundary();
+
+    // test whether the tetrimone is right
+    vector<Pixel> test_shape = tetri_one->get_shape();
+    shape_testing(test_shape);
     
 
 
@@ -134,12 +148,12 @@ int main(void)
         auto now = std::chrono::high_resolution_clock::now();
         
         // clock-wise rotation
-        if (IsKeyDown(KEY_C) && (rotate != -1)){
+        if ((tetri_one) && IsKeyDown(KEY_C) && (rotate != -1)){
             rotate = 1;
             // tetri_one.update_shape(1);
             // cout << "Yes" << "\n";
         } else{
-            if (rotate == 1){
+            if ((tetri_one) && (rotate == 1)){
                 // cout << "Update" << "\n";
                 tetri_one->update_shape(rotate);
                 limits = tetri_one->get_boundary();
@@ -150,10 +164,10 @@ int main(void)
         };
 
         // anti-clock rotation
-        if (IsKeyDown(KEY_A) && (rotate != 1)){
+        if ((tetri_one) && IsKeyDown(KEY_A) && (rotate != 1)){
             rotate = -1;
         } else{
-            if (rotate == -1){
+            if ((tetri_one) && (rotate == -1)){
                 tetri_one->update_shape(rotate);
                 limits = tetri_one->get_boundary();
                 rotate = 0;
@@ -165,7 +179,7 @@ int main(void)
         };
 
         // move left
-        if (IsKeyDown(KEY_LEFT)){
+        if ((tetri_one) && IsKeyDown(KEY_LEFT)){
             if (limits.x_min == 0){
                 delta_x = 0;
             }
@@ -173,7 +187,7 @@ int main(void)
                 delta_x = -1;
             };
         }else{
-            if (delta_x == -1){
+            if ((tetri_one) && (delta_x == -1)){
                 tetri_one->update_position(delta_x, 0);
                 limits = tetri_one->get_boundary();
                 delta_x = 0;
@@ -181,7 +195,7 @@ int main(void)
         };
 
         // move right
-        if (IsKeyDown(KEY_RIGHT)){
+        if ((tetri_one) && IsKeyDown(KEY_RIGHT)){
             if (limits.x_max == x_max_scaled){
                 delta_x = 0;
             }
@@ -189,7 +203,7 @@ int main(void)
                 delta_x = 1;
             };
         }else{
-            if (delta_x == 1){
+            if ((tetri_one) && (delta_x == 1)){
                 // cout << "Update" << "\n";
                 // shape_testing(tetri_one.get_shape());
                 tetri_one->update_position(delta_x, 0);
@@ -200,33 +214,36 @@ int main(void)
 
         
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - prev);
-        if ((diff.count() >= 1000) && ((limits.y_max + 1)*scale < screenHeight)) {
+        if ((tetri_one) && (diff.count() >= 1000) && ((limits.y_max + 1)*scale < screenHeight)) {
             prev = now;
             bool detach = onboard(tetri_one, board, 1);
+            cout << "checking detach and it is currently " << detach << "\n";
             if(!detach){
+                cout << "updating the fall of the tetrimone " << "\n";
                 tetri_one->update_position(0, 1);
             }
             else{
+                vector<Pixel> tetri_block = tetri_one->get_shape();
+                board.latch_on(tetri_block, MAROON);
                 delete tetri_one;
                 tetri_one = nullptr;
             }
         };
-        if (!tetri_one){
+
+
+        if (tetri_one){
+            cout << "getting the limits " << "\n";
             limits = tetri_one->get_boundary();
+            if ((limits.y_max + 1) == board_h){
+                vector<Pixel> tetri_block = tetri_one->get_shape();
+                board.latch_on(tetri_block, MAROON);
+                delete tetri_one;
+                tetri_one = nullptr;
+            }
         }
 
-        // CHESHVIKA
-        // CHAISHAVI
-        // SAGAR
-        // VEENILA
-        // SRINU - NANNA
-        // SUGUNA
-        // SURYA RAO - SURYA RAO - SURYA RAO
-        // HANUMANTH RAO
-        // SUDHA AMMAMA
-        // SONU
-        // chikiri
-        // oh my baby
+
+
 
         // cout << "y_max" << " " << limits.y_max << "\n";
         //----------------------------------------------------------------------------------
@@ -237,8 +254,10 @@ int main(void)
 
             ClearBackground(RAYWHITE);
             // DrawRectangle(ballPosition.x, ballPosition.y, scale, scale, MAROON);
-            render_board(board);
-            if (!tetri_one){
+            // cout << "calling board render" << "\n";
+            render_board(board, scale);
+            if (tetri_one){
+                // cout << "calling the render shape too" << "\n";
                 render(tetri_one->get_shape(), scale);
             }
 
