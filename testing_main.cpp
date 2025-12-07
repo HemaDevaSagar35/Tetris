@@ -67,19 +67,8 @@ void shape_testing(vector<Pixel> shape){
         std::cout << "y is " << block.y << "\n";
         std::cout << "---------" << "\n";
     };
-}
+};
 
-int xaxis_correction(Boundary limits, int x_max_scaled){
-    if (limits.x_min < 0){
-        return -1*limits.x_min;
-    };
-
-    if (limits.x_max > x_max_scaled){
-        return x_max_scaled - limits.x_max;
-    };
-
-    return 0;
-}
 
 
 int main(void)
@@ -127,6 +116,8 @@ int main(void)
         VIOLET,
         BROWN,
     };
+
+    
     //########################## 1.3 Random states for tetrimone, position, rotation and color #############
     //randomness of the position
     random_device pos_rd;
@@ -149,41 +140,51 @@ int main(void)
     uniform_int_distribution<> color_distrib(0, 11);
     
     
-
-    //chose the values for the random
-    int x = pos_distrib(pos_gen); // these can be random initialized with
-    int y = 0; // these can be random initialized with
-    int init_rotation = rot_distrib(rot_rd) * 90;
-
-    // create the shape and do any xaxis correction
-    // LShape tetri_one = LShape(x, y, init_rotation);
-    // cout << x << " " << y << "\n";
-    Shape* tetri_one = nullptr;
-    tetri_one = new TShape(x, y, init_rotation);
-    Boundary limits = tetri_one->get_boundary();
-    int init_corr = xaxis_correction(limits, x_max_scaled);
-    tetri_one->update_position(init_corr, 0);
-    limits = tetri_one->get_boundary();
-
-    // test whether the tetrimone is right
-    vector<Pixel> test_shape = tetri_one->get_shape();
-    shape_testing(test_shape);
-    
-
+    //######################## 1.4 State variable that will be re-used ##################################
+    Shape* tetri_one = nullptr; // creating a tetrimone reference
+    int x = 0;
+    int y = 0;
+    int r = 0;
+    int init_corr = 0;
+    Color color = MAROON;
+    Boundary limits = Boundary(0, 0, 0);
 
     int rotate = 0;
     bool reset = false;
     int delta_x = 0;
 
-    
-    //--------------------------------------------------------------------------------------
+
     float speed = 1;
     auto prev = std::chrono::high_resolution_clock::now();
 
+    // ###################### 2.0 Starting the Main Below ##############################
 
     // Main game loop
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
+
+        //Update
+        //############### if tetri is null create one #######################
+        if (!tetri_one){
+            x = pos_distrib(pos_gen);
+            r = rot_distrib(rot_rd) * 90;
+            color = color_factory[color_distrib(color_gen)];
+
+            tetri_one = teri_factory[shape_distrib(shape_gen)](x, y, r);
+            limits = tetri_one->get_boundary();
+            init_corr = xaxis_correction(limits, x_max_scaled);
+            tetri_one->update_position(init_corr, 0);
+            limits = tetri_one->get_boundary();
+
+            rotate = 0;
+            reset = false;
+            delta_x = 0;
+
+            prev = std::chrono::high_resolution_clock::now();
+
+        }
+
+
         // Update
         //----------------------------------------------------------------------------------
         auto now = std::chrono::high_resolution_clock::now();
@@ -196,11 +197,9 @@ int main(void)
         } else{
             if ((tetri_one) && (rotate == 1)){
                 // cout << "Update" << "\n";
-                tetri_one->update_shape(rotate);
-                limits = tetri_one->get_boundary();
+                limits = do_valid_rotation(tetri_one, board, x_max_scaled, rotate);
                 rotate = 0;
-                int correction = xaxis_correction(limits, x_max_scaled);
-                tetri_one->update_position(correction, 0);
+
             };
         };
 
@@ -209,12 +208,9 @@ int main(void)
             rotate = -1;
         } else{
             if ((tetri_one) && (rotate == -1)){
-                tetri_one->update_shape(rotate);
-                limits = tetri_one->get_boundary();
+                limits = do_valid_rotation(tetri_one, board, x_max_scaled, rotate);
                 rotate = 0;
                 reset = true;
-                int correction = xaxis_correction(limits, x_max_scaled);
-                tetri_one->update_position(correction, 0);
             }
 
         };
@@ -229,8 +225,7 @@ int main(void)
             };
         }else{
             if ((tetri_one) && (delta_x == -1)){
-                tetri_one->update_position(delta_x, 0);
-                limits = tetri_one->get_boundary();
+                limits = do_valid_move(tetri_one, board, delta_x);
                 delta_x = 0;
             };
         };
@@ -245,10 +240,7 @@ int main(void)
             };
         }else{
             if ((tetri_one) && (delta_x == 1)){
-                // cout << "Update" << "\n";
-                // shape_testing(tetri_one.get_shape());
-                tetri_one->update_position(delta_x, 0);
-                limits = tetri_one->get_boundary();
+                limits = do_valid_move(tetri_one, board, delta_x);
                 delta_x = 0;
             };
         };
@@ -265,7 +257,7 @@ int main(void)
             }
             else{
                 vector<Pixel> tetri_block = tetri_one->get_shape();
-                board.latch_on(tetri_block, MAROON);
+                board.latch_on(tetri_block, color);
                 delete tetri_one;
                 tetri_one = nullptr;
             }
@@ -277,7 +269,7 @@ int main(void)
             limits = tetri_one->get_boundary();
             if ((limits.y_max + 1) == board_h){
                 vector<Pixel> tetri_block = tetri_one->get_shape();
-                board.latch_on(tetri_block, MAROON);
+                board.latch_on(tetri_block, color);
                 delete tetri_one;
                 tetri_one = nullptr;
             }
@@ -292,7 +284,7 @@ int main(void)
             render_board(board, scale);
             if (tetri_one){
                 // cout << "calling the render shape too" << "\n";
-                render(tetri_one->get_shape(), scale, MAROON);
+                render(tetri_one->get_shape(), scale, color);
             }
 
         EndDrawing();
