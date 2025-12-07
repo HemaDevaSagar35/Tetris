@@ -250,9 +250,7 @@ int main(void)
         if ((tetri_one) && (diff.count() >= 1000) && ((limits.y_max + 1)*scale < screenHeight)) {
             prev = now;
             bool detach = onboard(tetri_one, board, 1);
-            cout << "checking detach and it is currently " << detach << "\n";
             if(!detach){
-                cout << "updating the fall of the tetrimone " << "\n";
                 tetri_one->update_position(0, 1);
             }
             else{
@@ -265,7 +263,6 @@ int main(void)
 
 
         if (tetri_one){
-            cout << "getting the limits " << "\n";
             limits = tetri_one->get_boundary();
             if ((limits.y_max + 1) == board_h){
                 vector<Pixel> tetri_block = tetri_one->get_shape();
@@ -279,11 +276,8 @@ int main(void)
         BeginDrawing();
 
             ClearBackground(RAYWHITE);
-            // DrawRectangle(ballPosition.x, ballPosition.y, scale, scale, MAROON);
-            // cout << "calling board render" << "\n";
             render_board(board, scale);
             if (tetri_one){
-                // cout << "calling the render shape too" << "\n";
                 render(tetri_one->get_shape(), scale, color);
             }
 
