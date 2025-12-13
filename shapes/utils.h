@@ -138,6 +138,7 @@ class Board{
     vector<int> line_formed;
     int width;
     int height;
+    vector<int> deltas;
     //w and h here are width and height. correspondiing index limit would be 
     public:
         vector<vector<Color>> board;
@@ -153,6 +154,7 @@ class Board{
                 }
                 this->board.push_back(hstrip);
                 this->line_formed.push_back(0);
+                this->deltas.push_back(0);
 
             };
             this->width = w;
@@ -201,7 +203,8 @@ class Board{
         void clear_lines(){
             // clear the lines simply - without animation on the disappearance
             // calculate downward moment
-            vector<int> deltas = calculate_delta();
+            // vector<int> deltas = calculate_delta();
+            calculate_delta();
             clean_lines_fully();
 
             for(int i = board.size() - 2; i >= 0; i--){
@@ -214,6 +217,7 @@ class Board{
                 }
             }
             fill(this->line_formed.begin(), this->line_formed.end(), 0);
+            fill(this->deltas.begin(), this->deltas.end(), 0);
             this->lines_filled = false;
 
         }
@@ -237,19 +241,52 @@ class Board{
             return board[i];
         }
 
+        void clean_lines_selectively(int left, int right){
+            for(int i = 0;i<line_formed.size();i++){
+                if (line_formed[i] == 0){
+                    continue;
+                }
+                board[i][left] = RAYWHITE;
+                board[i][right] = RAYWHITE;
+            };
+
+        }
+
+        void clear_lines_selectively(int line_no){
+            // clear the lines simply - without animation on the disappearance
+            // calculate downward moment
+            // vector<int> deltas = calculate_delta();
+            // calculate_delta();
+            // clean_lines_fully();
+
+            
+            if (line_formed[line_no] == 1){
+                return;
+            }
+            int del_y = deltas[line_no];
+            for (int j = 0;j < board[line_no].size();j++){
+                board[line_no+del_y][j] = board[line_no][j];
+            }
+            // this->line_formed[line_no] = 0;
+        }
+
+        void reset_lines_deltas(){
+            fill(this->line_formed.begin(), this->line_formed.end(), 0);
+            fill(this->deltas.begin(), this->deltas.end(), 0);
+            this->lines_filled = false;
+        }
+
     protected:
-        vector<int> calculate_delta(){
-            vector<int> deltas(line_formed.size(), 0);
+        void calculate_delta(){
+            // vector<int> deltas(line_formed.size(), 0);
 
             int counter = 0;
             for (int i = line_formed.size() - 1; i > 0; i--){
                 if (line_formed[i] == 1){
                     counter += 1;
                 }
-                deltas[i - 1] = counter;
+                this->deltas[i - 1] = counter;
             }
-
-            return deltas;
         }
 
         void clean_lines_fully(){

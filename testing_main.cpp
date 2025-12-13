@@ -81,6 +81,7 @@ int main(void)
     const int screenWidth = 400;
     const int screenHeight = 2*screenWidth;
     const int scale = screenWidth / 10;
+    const int fr = 60;
 
     const int x_max_scaled = (int) screenWidth / scale - 1;
 
@@ -88,7 +89,7 @@ int main(void)
     const int board_h = (int) screenHeight / scale;
 
     Board board(board_w, board_h);
-    SetTargetFPS(60);   // Set our game to run at 60 frames-per-second
+    SetTargetFPS(fr);   // Set our game to run at 60 frames-per-second
     InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
 
     //########################## 1.2 Tetrimones/Color Factory Setup ###################################
@@ -153,9 +154,21 @@ int main(void)
     bool reset = false;
     int delta_x = 0;
 
+    float factor = 0.5;
+    int width_animation = (factor * 1000) / (board_w / 2); //millisecond
+    int height_animation = (factor * 1000) / (board_h); //millsecond
+    int width_left = 0;
+    int width_right = board_w - 1;
+    int width_animation_direction = 0;
+    bool width_animation_completed = false;
+    // bool height_animation_completed = false;
+    int height_start = board_h - 1;
+
 
     float speed = 1;
     auto prev = std::chrono::high_resolution_clock::now();
+    auto width_prev = std::chrono::high_resolution_clock::now();
+    auto heigh_prev = std::chrono::high_resolution_clock::now();
 
     // ###################### 2.0 Starting the Main Below ##############################
 
@@ -165,7 +178,7 @@ int main(void)
 
         //Update
         //############### if tetri is null create one #######################
-        if (!tetri_one){
+        if ((!tetri_one) && (!board->is_lines_formed())){
             x = pos_distrib(pos_gen);
             r = rot_distrib(rot_rd) * 90;
             color = color_factory[color_distrib(color_gen)];
@@ -181,13 +194,23 @@ int main(void)
             delta_x = 0;
 
             prev = std::chrono::high_resolution_clock::now();
+            width_prev = std::chrono::high_resolution_clock::now();
+            heigh_prev = std::chrono::high_resolution_clock::now();
+
+            width_left = 0;
+            width_right = board_w - 1;
+            width_animation_direction = 0;
+            width_animation_completed = false;
+            // bool height_animation_completed = false;
+            height_start = board_h - 1;
+
 
         }
 
 
         // Update
         //----------------------------------------------------------------------------------
-        auto now = std::chrono::high_resolution_clock::now();
+        
         
         // clock-wise rotation
         if ((tetri_one) && IsKeyDown(KEY_C) && (rotate != -1)){
@@ -245,7 +268,7 @@ int main(void)
             };
         };
 
-        
+        auto now = std::chrono::high_resolution_clock::now();
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - prev);
         if ((tetri_one) && (diff.count() >= 1000) && ((limits.y_max + 1)*scale < screenHeight)) {
             prev = now;
@@ -272,6 +295,39 @@ int main(void)
             }
         }
 
+        // ############################################### ANIMATION ##########################################
+        if ((!tetri_one) && (board->is_lines_formed()) && (!width_animation_completed)){
+            // 1. first we have to make the lines
+            if (width_animation_direction != 0){
+                width_animation_direction = 1;
+                width_left = 0;
+                widht_right = board_w - 1;
+            }
+            auto width_now = std::chrono::high_resolution_clock::now();
+            auto width_diff = std::chrono::duration_cast<std::chrono::milliseconds>(width_now - width_prev);
+            if ((width_left <= width_right) && (width_left >= 0) && (widht_right < board_w) && (width_diff >= width_animation)){
+                board->clean_lines_selectively(width_left, width_right)
+                width_left = width_left + (1 * width_animation_direction);
+                width_right = width_right - (1 * width_animation_direction);
+                width_prev = width_now;
+            }else if (width_diff >= width_animation){
+                width_animation_completed = true;
+            }
+            
+        }
+
+        if ((!tetri_one) && (board->is_lines_formed()) && (width_animation_completed)){
+            auto height_now = std::chrono::high_resolution_clock::now();
+            auto height_diff = std::chrono::duration_cast<std::chrono::milliseconds>(height_now - height_prev);
+            if ((height_start >= 0) && (height_diff >= height_animation)){
+                board->clear_lines_selectively(height_start);
+                height_start =- 1;
+                height_prev = height_now;
+            }else if (height_diff >= height_animation){
+                board->reset_lines_deltas();
+
+            }
+        }
 
         BeginDrawing();
 

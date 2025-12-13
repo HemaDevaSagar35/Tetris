@@ -540,13 +540,13 @@ class GameTest : public testing::Test{
 
 TEST_F(GameTest, OnboardWorks){
 
-    bool output = onboard(t1, b1, 1);
+    bool output = onboard(&t1, b1, 1);
     EXPECT_EQ(output, true) << "It should be onboarded";
 };
 
 TEST_F(GameTest, ValidMoveWorks){
 
-    bool output = validmove(t1, b1, 1, 0, 0);
+    bool output = validmove(&t1, b1, 1, 0, 0);
     EXPECT_EQ(output, true) << "It is a valid move, why is it saying otherwise?";
 
 }
