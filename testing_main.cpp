@@ -168,7 +168,7 @@ int main(void)
     float speed = 1;
     auto prev = std::chrono::high_resolution_clock::now();
     auto width_prev = std::chrono::high_resolution_clock::now();
-    auto heigh_prev = std::chrono::high_resolution_clock::now();
+    auto height_prev = std::chrono::high_resolution_clock::now();
 
     // ###################### 2.0 Starting the Main Below ##############################
 
@@ -177,8 +177,9 @@ int main(void)
     {
 
         //Update
+        cout << "window happening" << "\n";
         //############### if tetri is null create one #######################
-        if ((!tetri_one) && (!board->is_lines_formed())){
+        if ((!tetri_one) && (!board.is_lines_formed())){
             x = pos_distrib(pos_gen);
             r = rot_distrib(rot_rd) * 90;
             color = color_factory[color_distrib(color_gen)];
@@ -195,7 +196,7 @@ int main(void)
 
             prev = std::chrono::high_resolution_clock::now();
             width_prev = std::chrono::high_resolution_clock::now();
-            heigh_prev = std::chrono::high_resolution_clock::now();
+            height_prev = std::chrono::high_resolution_clock::now();
 
             width_left = 0;
             width_right = board_w - 1;
@@ -296,35 +297,43 @@ int main(void)
         }
 
         // ############################################### ANIMATION ##########################################
-        if ((!tetri_one) && (board->is_lines_formed()) && (!width_animation_completed)){
+        if ((!tetri_one) && (board.is_lines_formed()) && (!width_animation_completed)){
             // 1. first we have to make the lines
-            if (width_animation_direction != 0){
+            if (width_animation_direction == 0){
                 width_animation_direction = 1;
                 width_left = 0;
-                widht_right = board_w - 1;
+                width_right = board_w - 1;
             }
+            cout << "width animation is going" <<  "\n";
+            cout << "width animation direction is " << width_animation_direction << "\n";
             auto width_now = std::chrono::high_resolution_clock::now();
             auto width_diff = std::chrono::duration_cast<std::chrono::milliseconds>(width_now - width_prev);
-            if ((width_left <= width_right) && (width_left >= 0) && (widht_right < board_w) && (width_diff >= width_animation)){
-                board->clean_lines_selectively(width_left, width_right)
+            cout << "diff count is " <<  width_diff.count() << " reference is " << width_animation;
+            cout << "width left is "<< width_left << " and width right is " << width_right;
+            if ((width_left <= width_right) && (width_left >= 0) && (width_right < board_w) && (width_diff.count() >= width_animation)){
+                cout << "cleaning inside " << "\n";
+                board.clean_lines_selectively(width_left, width_right);
+                cout << "cleaning inside finished and width animation_direction is "<< width_animation_direction << "\n";
                 width_left = width_left + (1 * width_animation_direction);
                 width_right = width_right - (1 * width_animation_direction);
+                cout << "inside width left is "<< width_left << " and width right is " << width_right; 
                 width_prev = width_now;
-            }else if (width_diff >= width_animation){
+            }else if (width_diff.count() >= width_animation){
                 width_animation_completed = true;
+                board.calculate_delta();
             }
             
         }
 
-        if ((!tetri_one) && (board->is_lines_formed()) && (width_animation_completed)){
+        if ((!tetri_one) && (board.is_lines_formed()) && (width_animation_completed)){
             auto height_now = std::chrono::high_resolution_clock::now();
             auto height_diff = std::chrono::duration_cast<std::chrono::milliseconds>(height_now - height_prev);
-            if ((height_start >= 0) && (height_diff >= height_animation)){
-                board->clear_lines_selectively(height_start);
-                height_start =- 1;
+            if ((height_start >= 0) && (height_diff.count() >= height_animation)){
+                board.clear_lines_selectively(height_start);
+                height_start = height_start - 1;
                 height_prev = height_now;
-            }else if (height_diff >= height_animation){
-                board->reset_lines_deltas();
+            }else if (height_diff.count() >= height_animation){
+                board.reset_lines_deltas();
 
             }
         }

@@ -276,7 +276,7 @@ class Board{
             this->lines_filled = false;
         }
 
-    protected:
+    
         void calculate_delta(){
             // vector<int> deltas(line_formed.size(), 0);
 
@@ -288,7 +288,8 @@ class Board{
                 this->deltas[i - 1] = counter;
             }
         }
-
+    
+    protected:
         void clean_lines_fully(){
             for(int i = 0;i<line_formed.size();i++){
                 if (line_formed[i] == 0){
