@@ -139,6 +139,10 @@ int main(void)
     random_device color_rd;
     mt19937 color_gen(color_rd());
     uniform_int_distribution<> color_distrib(0, 11);
+
+    random_device hori_ani_rd;
+    mt19937 hori_ani_gen(hori_ani_rd());
+    uniform_int_distribution<> hori_ani_distrib(1, 2);
     
     
     //######################## 1.4 State variable that will be re-used ##################################
@@ -177,7 +181,7 @@ int main(void)
     {
 
         //Update
-        cout << "window happening" << "\n";
+        //cout << "window happening" << "\n";
         //############### if tetri is null create one #######################
         if ((!tetri_one) && (!board.is_lines_formed())){
             x = pos_distrib(pos_gen);
@@ -300,23 +304,31 @@ int main(void)
         if ((!tetri_one) && (board.is_lines_formed()) && (!width_animation_completed)){
             // 1. first we have to make the lines
             if (width_animation_direction == 0){
-                width_animation_direction = 1;
-                width_left = 0;
-                width_right = board_w - 1;
-            }
-            cout << "width animation is going" <<  "\n";
-            cout << "width animation direction is " << width_animation_direction << "\n";
+                int int_ani_check = hori_ani_distrib(hori_ani_gen);
+                if (int_ani_check == 1){
+                    width_animation_direction = 1;
+                    width_left = 0;
+                    width_right = board_w - 1;
+                }else if (int_ani_check == 2){
+                    // cout << "reversed is selected " << "\n";
+                    width_animation_direction = -1;
+                    width_right = board_w / 2;
+                    width_left = width_right + (board_w % 2 - 1);
+                };
+            };
+            // cout << "width animation is going" <<  "\n";
+            // cout << "width animation direction is " << width_animation_direction << "\n";
             auto width_now = std::chrono::high_resolution_clock::now();
             auto width_diff = std::chrono::duration_cast<std::chrono::milliseconds>(width_now - width_prev);
-            cout << "diff count is " <<  width_diff.count() << " reference is " << width_animation;
-            cout << "width left is "<< width_left << " and width right is " << width_right;
+            // cout << "diff count is " <<  width_diff.count() << " reference is " << width_animation;
+            // cout << "width left is "<< width_left << " and width right is " << width_right;
             if ((width_left <= width_right) && (width_left >= 0) && (width_right < board_w) && (width_diff.count() >= width_animation)){
-                cout << "cleaning inside " << "\n";
+                // cout << "cleaning inside " << "\n";
                 board.clean_lines_selectively(width_left, width_right);
-                cout << "cleaning inside finished and width animation_direction is "<< width_animation_direction << "\n";
+                // cout << "cleaning inside finished and width animation_direction is "<< width_animation_direction << "\n";
                 width_left = width_left + (1 * width_animation_direction);
                 width_right = width_right - (1 * width_animation_direction);
-                cout << "inside width left is "<< width_left << " and width right is " << width_right; 
+                // cout << "inside width left is "<< width_left << " and width right is " << width_right; 
                 width_prev = width_now;
             }else if (width_diff.count() >= width_animation){
                 width_animation_completed = true;
