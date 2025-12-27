@@ -2,6 +2,7 @@
 
 #include <limits>
 #include<raylib.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -138,6 +139,7 @@ class Board{
     vector<int> line_formed;
     int width;
     int height;
+    int height_towered;
     vector<int> deltas;
     //w and h here are width and height. correspondiing index limit would be 
     public:
@@ -159,6 +161,7 @@ class Board{
             };
             this->width = w;
             this->height = h;
+            this->height_towered = h;
         };
 
         void latch_on(vector<Pixel> terimone, Color color){
@@ -166,11 +169,15 @@ class Board{
                 int x = p.x;
                 int y = p.y;
                 board[y][x] = color;
+                this->height_towered = min(this->height_towered, y); // This might required algorithms, may we can replace with with a = (a < b) ? a: b; to avoid algos
             };
 
             line_formation();
         };
 
+        int get_height_peak(){
+            return this->height_towered;
+        }
 
         bool is_lines_formed(){
             return lines_filled;
@@ -287,6 +294,14 @@ class Board{
                 }
                 this->deltas[i - 1] = counter;
             }
+        }
+
+        int get_total_lines(){
+            int total = 0;
+            for (int x : line_formed){
+                total = total + x;
+            }
+            return total;
         }
     
     protected:

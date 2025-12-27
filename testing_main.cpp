@@ -168,8 +168,15 @@ int main(void)
     // bool height_animation_completed = false;
     int height_start = board_h - 1;
 
-
+    int game_over = 0;
     float speed = 1;
+    int gravity_drop = 750; // after these milliseconds the tetrimone will move down
+    int gravity_drop_min = 250; // this is minimum milliseconds the tetrimone can ever mode
+    int gravity_rate = 50;
+    int gravity_update = 120000;
+    auto game_start = std::chrono::high_resolution_clock::now(); // Gravity is hooked through this
+    int score = 0;
+
     auto prev = std::chrono::high_resolution_clock::now();
     auto width_prev = std::chrono::high_resolution_clock::now();
     auto height_prev = std::chrono::high_resolution_clock::now();
@@ -182,6 +189,15 @@ int main(void)
 
         //Update
         //cout << "window happening" << "\n";
+        // ################ refine gravity if required ######################
+        auto game_now = std::chrono::high_resolution_clock::now();
+        auto game_diff = std::chrono::duration_cast<std::chrono::milliseconds>(game_now - game_start);
+        if ((game_diff.count() >= gravity_update) && (gravity_drop > gravity_drop_min)){
+            gravity_drop = gravity_drop - gravity_rate;
+            game_start = game_now;
+        };
+
+
         //############### if tetri is null create one #######################
         if ((!tetri_one) && (!board.is_lines_formed())){
             x = pos_distrib(pos_gen);
@@ -209,10 +225,20 @@ int main(void)
             // bool height_animation_completed = false;
             height_start = board_h - 1;
 
+            int height_peaked = board.get_height_peak();
+            // cout << "height peaked is " << board.get_height_peak() << "\n";
+            // cout << "limit peak is " << limits.y_max << "\n";
+            if (height_peaked <= limits.y_max){
+                // cout << "Problem" << "\n";
+                game_over = 1; // Simplistic choice I see
+            };
 
-        }
+        };
 
-
+        if (game_over == 1){
+            // cout << "GAME OVER" << "\n";
+            continue;
+        };
         // Update
         //----------------------------------------------------------------------------------
         
@@ -275,7 +301,7 @@ int main(void)
 
         auto now = std::chrono::high_resolution_clock::now();
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - prev);
-        if ((tetri_one) && (diff.count() >= 1000) && ((limits.y_max + 1)*scale < screenHeight)) {
+        if ((tetri_one) && (diff.count() >= gravity_drop) && ((limits.y_max + 1)*scale < screenHeight)) {
             prev = now;
             bool detach = onboard(tetri_one, board, 1);
             if(!detach){
@@ -330,7 +356,7 @@ int main(void)
                 width_right = width_right - (1 * width_animation_direction);
                 // cout << "inside width left is "<< width_left << " and width right is " << width_right; 
                 width_prev = width_now;
-            }else if (width_diff.count() >= width_animation){
+            }else if ((width_left > width_right) || !((width_left >= 0) && (width_right < board_w))){
                 width_animation_completed = true;
                 board.calculate_delta();
             }
@@ -344,7 +370,9 @@ int main(void)
                 board.clear_lines_selectively(height_start);
                 height_start = height_start - 1;
                 height_prev = height_now;
-            }else if (height_diff.count() >= height_animation){
+            }else if (height_start < 0){
+                int total_lines = board.get_total_lines();
+                score = score + total_lines;
                 board.reset_lines_deltas();
 
             }
