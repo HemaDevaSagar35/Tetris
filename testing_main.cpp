@@ -157,6 +157,8 @@ int main(void)
     int rotate = 0;
     bool reset = false;
     int delta_x = 0;
+    int downward_ghost = -1;
+    int downward_ghost_speed = 62;
 
     float factor = 0.5;
     int width_animation = (factor * 1000) / (board_w / 2); //millisecond
@@ -192,7 +194,7 @@ int main(void)
         // ################ refine gravity if required ######################
         auto game_now = std::chrono::high_resolution_clock::now();
         auto game_diff = std::chrono::duration_cast<std::chrono::milliseconds>(game_now - game_start);
-        if ((game_diff.count() >= gravity_update) && (gravity_drop > gravity_drop_min)){
+        if ((game_diff.count() >= gravity_update) && (gravity_drop > gravity_drop_min) && (downward_ghost == -1)){
             gravity_drop = gravity_drop - gravity_rate;
             game_start = game_now;
         };
@@ -224,6 +226,7 @@ int main(void)
             width_animation_completed = false;
             // bool height_animation_completed = false;
             height_start = board_h - 1;
+            downward_ghost = -1;
 
             int height_peaked = board.get_height_peak();
             // cout << "height peaked is " << board.get_height_peak() << "\n";
@@ -244,7 +247,7 @@ int main(void)
         
         
         // clock-wise rotation
-        if ((tetri_one) && IsKeyDown(KEY_C) && (rotate != -1)){
+        if ((tetri_one) && IsKeyDown(KEY_C) && (rotate != -1) && (downward_ghost == -1)){
             rotate = 1;
             // tetri_one.update_shape(1);
             // cout << "Yes" << "\n";
@@ -258,7 +261,7 @@ int main(void)
         };
 
         // anti-clock rotation
-        if ((tetri_one) && IsKeyDown(KEY_A) && (rotate != 1)){
+        if ((tetri_one) && IsKeyDown(KEY_A) && (rotate != 1) && (downward_ghost == -1)){
             rotate = -1;
         } else{
             if ((tetri_one) && (rotate == -1)){
@@ -270,7 +273,7 @@ int main(void)
         };
 
         // move left
-        if ((tetri_one) && IsKeyDown(KEY_LEFT)){
+        if ((tetri_one) && IsKeyDown(KEY_LEFT) && (downward_ghost == -1)){
             if (limits.x_min == 0){
                 delta_x = 0;
             }
@@ -285,7 +288,7 @@ int main(void)
         };
 
         // move right
-        if ((tetri_one) && IsKeyDown(KEY_RIGHT)){
+        if ((tetri_one) && IsKeyDown(KEY_RIGHT) && (downward_ghost == -1)){
             if (limits.x_max == x_max_scaled){
                 delta_x = 0;
             }
@@ -296,6 +299,15 @@ int main(void)
             if ((tetri_one) && (delta_x == 1)){
                 limits = do_valid_move(tetri_one, board, delta_x);
                 delta_x = 0;
+            };
+        };
+
+        // move down
+        if ((tetri_one) && IsKeyDown(KEY_DOWN)){
+            downward_ghost = gravity_drop;
+        }else{
+            if ((tetri_one) && (downward_ghost > -1)){
+                gravity_drop = downward_ghost_speed;
             };
         };
 
@@ -312,6 +324,10 @@ int main(void)
                 board.latch_on(tetri_block, color);
                 delete tetri_one;
                 tetri_one = nullptr;
+                if (downward_ghost > -1){
+                    gravity_drop = downward_ghost;
+                    downward_ghost = -1;
+                }
             }
         };
 
@@ -323,6 +339,10 @@ int main(void)
                 board.latch_on(tetri_block, color);
                 delete tetri_one;
                 tetri_one = nullptr;
+                if (downward_ghost > -1){
+                    gravity_drop = downward_ghost;
+                    downward_ghost = -1;
+                }
             }
         }
 
