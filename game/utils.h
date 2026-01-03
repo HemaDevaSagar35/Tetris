@@ -1,7 +1,8 @@
 #pragma once
 
 #include <limits>
-#include<raylib.h>
+#include <raylib.h>
+#include <array>
 #include "../shapes/utils.h"
 
 
@@ -34,7 +35,7 @@ bool onboard(Shape* tetri, Board& board, int overlap = 1){
         int x = tetrimone[i].x;
         int y = tetrimone[i].y;
 
-        if (((y + offset) >= h) || (board[y + offset][x] != RAYWHITE)){
+        if (((y + offset) >= h) || (board[y + offset][x] != board.get_bg_color())){
             return true;
         }
     }
@@ -88,5 +89,75 @@ Boundary do_valid_move(Shape* tetri_one, Board& board, int delta_x){
         limits = tetri_one->get_boundary();
     }
     return limits;
-}
+};
+
+
+class ScoreBoard{
+    public:
+        int width;
+        std::array<vector<uint8_t>, 5> board;
+
+        explicit ScoreBoard(int w) : width(w) {
+
+            for (auto& r: board){
+                r.assign(width, 0);
+            }
+        };
+
+        void clearRegion() {
+            for (int r = 0; r < 5; r++) {
+                std::fill(board[r].begin(), board[r].end(), 0);
+            };
+        };
+
+        void updateScore(int x_start, int number) {
+            std::string s = std::to_string(number);
+            int x = x_start;
+            for (char ch : s) {
+                if (ch >= '0' && ch <= '9') {
+                    updateDigit(ch - '0', x);
+                    x += 4; // 3 cols digit + 1 col space
+                }
+            }
+        }
+    
+    private:
+        static constexpr uint8_t DIGITS[10][5] = {
+            // 0
+            {0b111, 0b101, 0b101, 0b101, 0b111},
+            // 1
+            {0b010, 0b110, 0b010, 0b010, 0b111},
+            // 2
+            {0b111, 0b001, 0b111, 0b100, 0b111},
+            // 3
+            {0b111, 0b001, 0b111, 0b001, 0b111},
+            // 4
+            {0b101, 0b101, 0b111, 0b001, 0b001},
+            // 5
+            {0b111, 0b100, 0b111, 0b001, 0b111},
+            // 6
+            {0b111, 0b100, 0b111, 0b101, 0b111},
+            // 7
+            {0b111, 0b001, 0b010, 0b010, 0b010},
+            // 8
+            {0b111, 0b101, 0b111, 0b101, 0b111},
+            // 9
+            {0b111, 0b101, 0b111, 0b001, 0b111}
+        };
+
+        void updateDigit(int digit, int x_start) {
+            if (digit < 0 || digit > 9) return;
+    
+            for (int r = 0; r < 5; r++) {
+                uint8_t mask = DIGITS[digit][r]; // 3 bits
+                for (int c = 0; c < 3; c++) {
+                    int x = x_start + c;
+                    if (x < 0 || x >= width) continue;
+                    // take bit from left to right: bit2->col0, bit1->col1, bit0->col2
+                    board[r][x] = (mask >> (2 - c)) & 1;
+                };
+            };
+        };
+
+};
 

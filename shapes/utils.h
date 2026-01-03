@@ -141,16 +141,18 @@ class Board{
     int height;
     int height_towered;
     vector<int> deltas;
+    Color bg_color;
     //w and h here are width and height. correspondiing index limit would be 
     public:
         vector<vector<Color>> board;
-        Board(int w, int h){
+        Board(int w, int h, Color bg_c = RAYWHITE){
             // initialize everything with white board
+            this->bg_color = bg_c;
             for(int i = 0; i < h;i++){
                 vector<Color> hstrip;
                 for(int j=0;j<w;j++){
                     
-                    Color p = RAYWHITE;
+                    Color p = bg_color;
                     hstrip.push_back(p);
                     
                 }
@@ -179,6 +181,10 @@ class Board{
             return this->height_towered;
         }
 
+        Color get_bg_color(){
+            return this->bg_color;
+        }
+
         bool is_lines_formed(){
             return lines_filled;
         }
@@ -193,7 +199,7 @@ class Board{
             for(int i = 0; i < board.size();i++){
                 int counter = 0;
                 for (int j = 0;j < board[i].size();j++){
-                    if (board[i][j] == RAYWHITE){
+                    if (board[i][j] == bg_color){
                         counter +=1;
                         break;
                     };
@@ -253,8 +259,8 @@ class Board{
                 if (line_formed[i] == 0){
                     continue;
                 }
-                board[i][left] = RAYWHITE;
-                board[i][right] = RAYWHITE;
+                board[i][left] = bg_color;
+                board[i][right] = bg_color;
             };
 
         }
@@ -312,7 +318,7 @@ class Board{
                 }
 
                 for (int j = 0;j < board[i].size();j++){
-                    board[i][j] = RAYWHITE;
+                    board[i][j] = bg_color;
                 };
             };
         }

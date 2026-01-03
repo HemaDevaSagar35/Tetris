@@ -17,24 +17,40 @@
 
 
 
-void render(vector<Pixel> shape, const int scale, Color color){
+void render(vector<Pixel> shape, const int scale, Color color, const int offset){
     for (auto block : shape){
         // std::cout << "x is " << block.x;
         // std::cout << "y is " << block.y;
         // std::cout << "---------";
-        DrawRectangle(block.x * scale, block.y * scale, scale, scale, color);
+        DrawRectangle(block.x * scale, (block.y + offset) * scale, scale, scale, color);
     };
 };
 
-void render_board(Board b, const int scale){
+void render_board(Board& b, const int scale, const int offset){
     int h = b.get_board_height();
     int w = b.get_board_width();
     for(int i = 0;i < h;i++){
         for(int j = 0;j < w;j++){
-            DrawRectangle(j * scale, i * scale, scale, scale, b[i][j]);
+            DrawRectangle(j * scale, (i + offset) * scale, scale, scale, b[i][j]);
         }
     };
 }
+
+void render_score_board(ScoreBoard& sb, Color color, const int scale, const int display_offset){
+    int scale_h = (display_offset * scale)/5;
+    for (int i = 0; i < 5;i++){
+        for (int j = 0; j < sb.width; j++){
+            if (sb.board[i][j] == 0){
+                DrawRectangle(j * (scale_h), i * (scale_h), scale_h, scale_h, color);
+            }else{
+                DrawRectangle(j * (scale_h), i * (scale_h), scale_h, scale_h, BLACK);
+            }
+        }
+    }
+}
+
+
+
 
 
 class Element{
@@ -78,9 +94,9 @@ int main(void)
     //--------------------------------------------------------------------------------------
     // ################################# 1 BELOW ARE STAGED ONLY ONCE ##################################
     //######################### 1.1 window size and FPS ###########################################
-    const int screenWidth = 400;
+    const int screenWidth = 400; // NOTE: always a multiple of 100
     const int screenHeight = 2*screenWidth;
-    const int scale = screenWidth / 10;
+    const int scale = screenWidth / 10; // should always be a multiple of 10
     const int fr = 60;
 
     const int x_max_scaled = (int) screenWidth / scale - 1;
@@ -88,9 +104,12 @@ int main(void)
     const int board_w = (int) screenWidth / scale;
     const int board_h = (int) screenHeight / scale;
 
-    Board board(board_w, board_h);
+    const int display_offset = 1;
+
+    Color bg_color = RAYWHITE;
+    Board board(board_w, board_h, bg_color);
     SetTargetFPS(fr);   // Set our game to run at 60 frames-per-second
-    InitWindow(screenWidth, screenHeight, "raylib [core] example - keyboard input");
+    InitWindow(screenWidth, screenHeight + display_offset*scale, "raylib [core] example - keyboard input");
 
     //########################## 1.2 Tetrimones/Color Factory Setup ###################################
     static const std::array<std::function<Shape*(int, int, int)>, 7> teri_factory = {{
@@ -154,6 +173,10 @@ int main(void)
     Color color = MAROON;
     Boundary limits = Boundary(0, 0, 0);
 
+    const int display_factor = scale / ((display_offset * scale)/5); //TODO scale should be exactly  by this
+    ScoreBoard s_board(board_w*(display_factor+1));
+    
+
     int rotate = 0;
     bool reset = false;
     int delta_x = 0;
@@ -178,6 +201,7 @@ int main(void)
     int gravity_update = 120000;
     auto game_start = std::chrono::high_resolution_clock::now(); // Gravity is hooked through this
     int score = 0;
+    s_board.updateScore(0, score);
 
     auto prev = std::chrono::high_resolution_clock::now();
     auto width_prev = std::chrono::high_resolution_clock::now();
@@ -303,7 +327,7 @@ int main(void)
         };
 
         // move down
-        if ((tetri_one) && IsKeyDown(KEY_DOWN)){
+        if ((tetri_one) && IsKeyDown(KEY_DOWN) && (downward_ghost == -1)){
             downward_ghost = gravity_drop;
         }else{
             if ((tetri_one) && (downward_ghost > -1)){
@@ -393,7 +417,9 @@ int main(void)
             }else if (height_start < 0){
                 int total_lines = board.get_total_lines();
                 score = score + total_lines;
+                s_board.updateScore(0, score);
                 board.reset_lines_deltas();
+
 
             }
         }
@@ -401,9 +427,10 @@ int main(void)
         BeginDrawing();
 
             ClearBackground(RAYWHITE);
-            render_board(board, scale);
+            render_score_board(s_board, BEIGE, scale, display_offset);
+            render_board(board, scale, display_offset);
             if (tetri_one){
-                render(tetri_one->get_shape(), scale, color);
+                render(tetri_one->get_shape(), scale, color, display_offset);
             }
 
         EndDrawing();
