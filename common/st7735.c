@@ -74,7 +74,8 @@ const uint8_t INIT_ST7735B[] PROGMEM = {
   //      0 -> refresh left to right 
   //      1 -> refresh right to left
   // 0xA0 = 1010 0000
-  1,   0, MADCTL, 0xA0,
+  // 0x00 = 0000 0000
+  1,   0, MADCTL, 0x00,
   // Main screen turn on
   0, 200, DISPON 
   // ---------------------------------------

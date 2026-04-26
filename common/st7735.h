@@ -98,8 +98,8 @@
 
   // AREA definition
   // -----------------------------------
-  #define MAX_X                 161               // max columns / MV = 0 in MADCTL
-  #define MAX_Y                 130               // max rows / MV = 0 in MADCTL
+  #define MAX_X                 130               // max columns / MV = 0 in MADCTL
+  #define MAX_Y                 161               // max rows / MV = 0 in MADCTL
   #define SIZE_X                MAX_X - 1         // columns max counter
   #define SIZE_Y                MAX_Y - 1         // rows max counter
   #define CACHE_SIZE_MEM        (MAX_X * MAX_Y)   // whole pixels
