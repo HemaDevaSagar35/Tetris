@@ -335,15 +335,35 @@ uint8_t ST7735_SetWindow (struct st7735 * lcd, uint8_t x0, uint8_t x1, uint8_t y
  *
  * @return  void
  */
+// void ST7735_SendColor565 (struct st7735 * lcd, uint16_t color, uint16_t count)
+// {
+//   // access to RAM
+//   ST7735_CommandSend (lcd, RAMWR);
+//   // counter
+//   while (count--) {
+//     // write color
+//     ST7735_Data16BitsSend (lcd, color);
+//   }
+// }
+
 void ST7735_SendColor565 (struct st7735 * lcd, uint16_t color, uint16_t count)
 {
-  // access to RAM
   ST7735_CommandSend (lcd, RAMWR);
-  // counter
+
+  uint8_t hi = (uint8_t)(color >> 8);
+  uint8_t lo = (uint8_t)(color);
+
+  CLR_BIT (*(lcd->cs->port), lcd->cs->pin);   // CS low ONCE
+  SET_BIT (*(lcd->dc->port), lcd->dc->pin);   // DC high ONCE (data)
+
   while (count--) {
-    // write color
-    ST7735_Data16BitsSend (lcd, color);
+    SPDR = hi;
+    WAIT_UNTIL_BIT_IS_SET (SPSR, SPIF);
+    SPDR = lo;
+    WAIT_UNTIL_BIT_IS_SET (SPSR, SPIF);
   }
+
+  SET_BIT (*(lcd->cs->port), lcd->cs->pin);   // CS high ONCE
 }
 
 /**

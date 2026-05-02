@@ -44,7 +44,8 @@ int main(void) {
   ST7735_Init(&lcd);
   ST7735_ClearScreen(&lcd, BLACK);
   ST7735_SetPosition(10, 10);
-  ST7735_DrawString(&lcd, "Hello World!", WHITE, X1);
+  // ST7735_DrawString(&lcd, "Hello World!", WHITE, X1);
+  ST7735_DrawRectangle (&lcd, 10, 40, 10, 90, WHITE);
 
   while (1) { }
   return 0;
