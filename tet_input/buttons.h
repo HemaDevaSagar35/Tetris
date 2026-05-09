@@ -6,12 +6,15 @@
 /* Configure all button pins as inputs with internal pull-ups. Call once at boot. */
 void buttons_init(void);
 
-/* Returns 1 exactly once when the LEFT button has a debounced rising edge
- * (a real press, after mechanical bounce settles); returns 0 otherwise.
+/* Each getter returns 1 exactly once when its button has a debounced rising
+ * edge (a real press, after mechanical bounce settles); 0 otherwise.
  *
- * Call at most once per main-loop iteration. Must be called continuously --
- * the function only detects edges by comparing successive calls.
+ * Call each one at most once per main-loop iteration. They must be called
+ * continuously -- edges are detected by comparing successive calls.
  */
 uint8_t button_left_just_pressed(void);
+uint8_t button_right_just_pressed(void);
+uint8_t button_rotate_cw_just_pressed(void);
+uint8_t button_rotate_ccw_just_pressed(void);
 
 #endif
