@@ -1,6 +1,7 @@
 #include "main.h"
 #include "st7735.h"
 #include "timer.h"
+#include "buttons.h"
 #include "t_shape.h"
 
 /* ---- tunable knobs ------------------------------------------------------- */
@@ -62,13 +63,14 @@ int main(void) {
     ST7735_ClearScreen(&lcd, BLACK);
 
     timer_init_1ms();
+    buttons_init();
     sei();   /* now Timer1 compare-match ISR can actually fire */
 
     /* Game state: active piece + its color (sibling locals, color NOT on Shape) */
     Shape   active;
     uint8_t active_color_idx = COLOR_T;
 
-    t_shape_init(&active, 3, 0, 0);              /* spawn at top-ish: x=3, y=0, rot 0 */
+    t_shape_init(&active, 3, 0, 0);                   /* spawn at top: x=3, y=0, rot 0 */
     render_shape(&lcd, &active, active_color_idx);
 
     uint16_t prev_ms = timer_now_ms();
@@ -76,15 +78,25 @@ int main(void) {
     while (1) {
         uint16_t now = timer_now_ms();
 
-        /* Unsigned subtraction handles g_ms wraparound (every ~65.5 s). */
+        /* ---- input: left button moves the piece one column left ---------- */
+        if (button_left_just_pressed()) {
+            Boundary b = shape_get_boundary(&active);
+            if (b.x_min > 0) {
+                render_shape(&lcd, &active, COLOR_BG);
+                shape_update_position(&active, -1, 0);
+                render_shape(&lcd, &active, active_color_idx);
+            }
+        }
+
+        /* ---- gravity: drop one row every GRAVITY_MS ---------------------- */
         if ((uint16_t)(now - prev_ms) >= GRAVITY_MS) {
             prev_ms = now;
 
             Boundary b = shape_get_boundary(&active);
             if (b.y_max + 1 < BOARD_H) {
-                render_shape(&lcd, &active, COLOR_BG);     /* erase */
-                shape_update_position(&active, 0, 1);      /* drop one row */
-                render_shape(&lcd, &active, active_color_idx); /* repaint */
+                render_shape(&lcd, &active, COLOR_BG);
+                shape_update_position(&active, 0, 1);
+                render_shape(&lcd, &active, active_color_idx);
             }
             /* else: piece is on the floor, stays put forever */
         }

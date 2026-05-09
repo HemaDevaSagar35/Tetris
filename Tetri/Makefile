@@ -17,8 +17,8 @@ LIBDIR = ../common
 ## Extra source/include directories. Each entry contributes its *.c files to
 ## SOURCES and an -I flag to CPPFLAGS. To add a new module, just append it.
 ## Order matters for header search: project-specific dirs first, then LIBDIR.
-EXTDIRS = ../tet_shapes $(LIBDIR)
-# later: EXTDIRS += ../tet_game ../tet_render ../tet_input
+EXTDIRS = ../tet_shapes ../tet_input $(LIBDIR)
+# later: EXTDIRS += ../tet_game ../tet_render
 
 ##########------------------------------------------------------##########
 ##########                 Programmer Defaults                  ##########
