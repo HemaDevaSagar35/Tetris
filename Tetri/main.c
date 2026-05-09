@@ -2,7 +2,13 @@
 #include "st7735.h"
 #include "timer.h"
 #include "buttons.h"
+#include "i_shape.h"
+#include "j_shape.h"
+#include "l_shape.h"
+#include "o_shape.h"
+#include "s_shape.h"
 #include "t_shape.h"
+#include "z_shape.h"
 
 /* ---- tunable knobs ------------------------------------------------------- *
  * Classic Tetris playfield is 10 wide x 20 tall. ST7735 is 130 x 161 px.
@@ -120,13 +126,31 @@ int main(void) {
     timer_init_1ms();
     buttons_init();
     sei();   /* now Timer1 compare-match ISR can actually fire */
+ 
+    uint8_t in_hard_drop     = 0;   /* 1 = piece is fast-falling; inputs locked */
 
     /* Game state: active piece + its color (sibling locals, color NOT on Shape) */
     Shape   active;
-    uint8_t active_color_idx = COLOR_T;
-    uint8_t in_hard_drop     = 0;   /* 1 = piece is fast-falling; inputs locked */
+    // uint8_t active_color_idx = COLOR_T;
+    // t_shape_init(&active, 3, 0, 0);                   /* spawn at top: x=3, y=0, rot 0 */
+    // uint8_t active_color_idx = COLOR_I;
+    // i_shape_init(&active, 3, 0, 0);
 
-    t_shape_init(&active, 3, 0, 0);                   /* spawn at top: x=3, y=0, rot 0 */
+    // uint8_t active_color_idx = COLOR_O;
+    // o_shape_init(&active, 4, 0, 0);
+
+    // uint8_t active_color_idx = COLOR_L;
+    // l_shape_init(&active, 4, 0, 0);
+
+    // uint8_t active_color_idx = COLOR_J;
+    // j_shape_init(&active, 5, 0, 0);
+
+    // uint8_t active_color_idx = COLOR_S;
+    // s_shape_init(&active, 5, 0, 0);
+
+    uint8_t active_color_idx = COLOR_Z;
+    z_shape_init(&active, 3, 0, 0);
+
     render_shape(&lcd, &active, active_color_idx);
 
     uint16_t prev_ms = timer_now_ms();
