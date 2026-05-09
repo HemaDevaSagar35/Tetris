@@ -13,6 +13,7 @@
 #define BOARD_W         10
 #define BOARD_H         20
 #define GRAVITY_MS      1000U
+#define HARD_DROP_MS    62U      /* matches downward_ghost_speed in C++ ref  */
 
 #define SCREEN_W        130            /* matches MAX_X in common/st7735.h   */
 #define SCREEN_H        161            /* matches MAX_Y in common/st7735.h   */
@@ -123,6 +124,7 @@ int main(void) {
     /* Game state: active piece + its color (sibling locals, color NOT on Shape) */
     Shape   active;
     uint8_t active_color_idx = COLOR_T;
+    uint8_t in_hard_drop     = 0;   /* 1 = piece is fast-falling; inputs locked */
 
     t_shape_init(&active, 3, 0, 0);                   /* spawn at top: x=3, y=0, rot 0 */
     render_shape(&lcd, &active, active_color_idx);
@@ -132,43 +134,56 @@ int main(void) {
     while (1) {
         uint16_t now = timer_now_ms();
 
-        /* ---- input: left button -- move one column left ---------------- */
-        if (button_left_just_pressed()) {
-            Boundary b = shape_get_boundary(&active);
-            if (b.x_min > 0) {
+        /* ---- inputs (gated entirely while hard-drop is in progress) ---- *
+         * Mirrors the C++ pattern of guarding every input with
+         * `(downward_ghost == -1)` -- collapsed into one outer `if` here.
+         * The hard-drop button lives inside this block too, so re-pressing
+         * it during a hard-drop is a no-op for free. */
+        if (!in_hard_drop) {
+            if (button_left_just_pressed()) {
+                Boundary b = shape_get_boundary(&active);
+                if (b.x_min > 0) {
+                    render_shape(&lcd, &active, COLOR_BG);
+                    shape_update_position(&active, -1, 0);
+                    render_shape(&lcd, &active, active_color_idx);
+                }
+            }
+
+            if (button_right_just_pressed()) {
+                Boundary b = shape_get_boundary(&active);
+                if (b.x_max < (int8_t)(BOARD_W - 1)) {
+                    render_shape(&lcd, &active, COLOR_BG);
+                    shape_update_position(&active, +1, 0);
+                    render_shape(&lcd, &active, active_color_idx);
+                }
+            }
+
+            /* try_rotation does the wall-kick and may revert. We erase,
+             * mutate, repaint regardless -- on failed rotation the piece is
+             * back at its original blocks, so the repaint is a no-op. */
+            if (button_rotate_cw_just_pressed()) {
                 render_shape(&lcd, &active, COLOR_BG);
-                shape_update_position(&active, -1, 0);
+                try_rotation(&active, +1);
                 render_shape(&lcd, &active, active_color_idx);
+            }
+            if (button_rotate_ccw_just_pressed()) {
+                render_shape(&lcd, &active, COLOR_BG);
+                try_rotation(&active, -1);
+                render_shape(&lcd, &active, active_color_idx);
+            }
+
+            /* Down -> enter hard drop. Inputs lock until the piece can no
+             * longer fall (handled in the gravity branch below). */
+            if (button_down_just_pressed()) {
+                in_hard_drop = 1;
             }
         }
 
-        /* ---- input: right button -- move one column right -------------- */
-        if (button_right_just_pressed()) {
-            Boundary b = shape_get_boundary(&active);
-            if (b.x_max < (int8_t)(BOARD_W - 1)) {
-                render_shape(&lcd, &active, COLOR_BG);
-                shape_update_position(&active, +1, 0);
-                render_shape(&lcd, &active, active_color_idx);
-            }
-        }
-
-        /* ---- input: rotate clockwise / anti-clockwise ------------------ *
-         * try_rotation does the wall-kick and may revert. We erase, mutate,
-         * repaint regardless -- on failed rotation the piece is back at its
-         * original blocks, so the repaint is a no-op visually. */
-        if (button_rotate_cw_just_pressed()) {
-            render_shape(&lcd, &active, COLOR_BG);
-            try_rotation(&active, +1);
-            render_shape(&lcd, &active, active_color_idx);
-        }
-        if (button_rotate_ccw_just_pressed()) {
-            render_shape(&lcd, &active, COLOR_BG);
-            try_rotation(&active, -1);
-            render_shape(&lcd, &active, active_color_idx);
-        }
-
-        /* ---- gravity: drop one row every GRAVITY_MS -------------------- */
-        if ((uint16_t)(now - prev_ms) >= GRAVITY_MS) {
+        /* ---- gravity: GRAVITY_MS normally, HARD_DROP_MS while fast-falling. *
+         * When the piece can't drop further, we exit hard-drop here -- this
+         * is also where we'll later lock the piece + spawn the next one. */
+        uint16_t step_ms = in_hard_drop ? HARD_DROP_MS : GRAVITY_MS;
+        if ((uint16_t)(now - prev_ms) >= step_ms) {
             prev_ms = now;
 
             Boundary b = shape_get_boundary(&active);
@@ -176,8 +191,11 @@ int main(void) {
                 render_shape(&lcd, &active, COLOR_BG);
                 shape_update_position(&active, 0, 1);
                 render_shape(&lcd, &active, active_color_idx);
+            } else {
+                /* Floor reached. Exit hard-drop so inputs unlock. Once the
+                 * Board exists, this is also the lock-and-spawn-next point. */
+                in_hard_drop = 0;
             }
-            /* else: piece is on the floor, stays put forever */
         }
     }
     return 0;

@@ -16,5 +16,6 @@ uint8_t button_left_just_pressed(void);
 uint8_t button_right_just_pressed(void);
 uint8_t button_rotate_cw_just_pressed(void);
 uint8_t button_rotate_ccw_just_pressed(void);
+uint8_t button_down_just_pressed(void);
 
 #endif

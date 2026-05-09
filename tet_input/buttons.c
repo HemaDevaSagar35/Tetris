@@ -21,10 +21,13 @@
  * --------------------------------------------------------------------------*/
 #define BTN_LEFT_BIT      PD4   /* move left           */
 #define BTN_ROT_CCW_BIT   PD3   /* rotate anti-clock   */
+#define BTN_DOWN_BIT      PD2   /* hard drop           */
 #define BTN_RIGHT_BIT     PC0   /* move right          */
 #define BTN_ROT_CW_BIT    PC1   /* rotate clockwise    */
 
-#define BTN_MASK_PORTD  ((1 << BTN_LEFT_BIT) | (1 << BTN_ROT_CCW_BIT))
+#define BTN_MASK_PORTD  ((1 << BTN_LEFT_BIT)    | \
+                         (1 << BTN_ROT_CCW_BIT) | \
+                         (1 << BTN_DOWN_BIT))
 #define BTN_MASK_PORTC  ((1 << BTN_RIGHT_BIT) | (1 << BTN_ROT_CW_BIT))
 
 /* ---- debounce ----------------------------------------------------------- *
@@ -91,5 +94,11 @@ uint8_t button_rotate_cw_just_pressed(void) {
 uint8_t button_rotate_ccw_just_pressed(void) {
     static button_state_t st = {0};
     uint8_t raw = !(PIND & (1 << BTN_ROT_CCW_BIT));
+    return button_step(&st, raw);
+}
+
+uint8_t button_down_just_pressed(void) {
+    static button_state_t st = {0};
+    uint8_t raw = !(PIND & (1 << BTN_DOWN_BIT));
     return button_step(&st, raw);
 }
