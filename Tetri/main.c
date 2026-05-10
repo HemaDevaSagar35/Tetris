@@ -2,6 +2,7 @@
 #include "st7735.h"
 #include "timer.h"
 #include "buttons.h"
+#include "board.h"
 #include "i_shape.h"
 #include "j_shape.h"
 #include "l_shape.h"
@@ -11,13 +12,13 @@
 #include "z_shape.h"
 
 /* ---- tunable knobs ------------------------------------------------------- *
- * Classic Tetris playfield is 10 wide x 20 tall. ST7735 is 130 x 161 px.
+ * Classic Tetris playfield is 10 wide x 20 tall (BOARD_W/BOARD_H now live in
+ * tet_game/board.h since they describe game state, not rendering). ST7735 is
+ * 130 x 161 px.
  *   board pixel size = 10*8 x 20*8 = 80 x 160
  *   offsets center the board horizontally (vertically it's already flush).
  * --------------------------------------------------------------------------*/
 #define BLOCK_PIXELS    8
-#define BOARD_W         10
-#define BOARD_H         20
 #define GRAVITY_MS      1000U
 #define HARD_DROP_MS    62U      /* matches downward_ghost_speed in C++ ref  */
 
@@ -126,31 +127,19 @@ int main(void) {
     timer_init_1ms();
     buttons_init();
     sei();   /* now Timer1 compare-match ISR can actually fire */
- 
-    uint8_t in_hard_drop     = 0;   /* 1 = piece is fast-falling; inputs locked */
 
-    /* Game state: active piece + its color (sibling locals, color NOT on Shape) */
+    /* Game state. Color is a sibling local, not a Shape field
+     * (see avr-c-port-design.mdc). */
+    Board   board;
     Shape   active;
-    // uint8_t active_color_idx = COLOR_T;
-    // t_shape_init(&active, 3, 0, 0);                   /* spawn at top: x=3, y=0, rot 0 */
-    // uint8_t active_color_idx = COLOR_I;
-    // i_shape_init(&active, 3, 0, 0);
+    uint8_t active_color_idx;
+    uint8_t in_hard_drop = 0;       /* 1 = fast-falling; inputs locked */
 
-    // uint8_t active_color_idx = COLOR_O;
-    // o_shape_init(&active, 4, 0, 0);
+    board_init(&board);
 
-    // uint8_t active_color_idx = COLOR_L;
-    // l_shape_init(&active, 4, 0, 0);
-
-    // uint8_t active_color_idx = COLOR_J;
-    // j_shape_init(&active, 5, 0, 0);
-
-    // uint8_t active_color_idx = COLOR_S;
-    // s_shape_init(&active, 5, 0, 0);
-
-    uint8_t active_color_idx = COLOR_Z;
-    z_shape_init(&active, 3, 0, 0);
-
+    /* Step 1 spawn: always a T at (3, 0). Factory + RNG comes in step 3. */
+    active_color_idx = COLOR_T;
+    t_shape_init(&active, 3, 0, 0);
     render_shape(&lcd, &active, active_color_idx);
 
     uint16_t prev_ms = timer_now_ms();
@@ -204,21 +193,28 @@ int main(void) {
         }
 
         /* ---- gravity: GRAVITY_MS normally, HARD_DROP_MS while fast-falling. *
-         * When the piece can't drop further, we exit hard-drop here -- this
-         * is also where we'll later lock the piece + spawn the next one. */
+         * Collision is now board-aware (board_collides catches both the floor
+         * and any latched cell underneath). When the piece can't fall further
+         * we latch it into the board and spawn the next one. */
         uint16_t step_ms = in_hard_drop ? HARD_DROP_MS : GRAVITY_MS;
         if ((uint16_t)(now - prev_ms) >= step_ms) {
             prev_ms = now;
 
-            Boundary b = shape_get_boundary(&active);
-            if (b.y_max + 1 < BOARD_H) {
+            if (!board_collides(&board, &active, 0, 1)) {
                 render_shape(&lcd, &active, COLOR_BG);
                 shape_update_position(&active, 0, 1);
                 render_shape(&lcd, &active, active_color_idx);
             } else {
-                /* Floor reached. Exit hard-drop so inputs unlock. Once the
-                 * Board exists, this is also the lock-and-spawn-next point. */
+                /* Lock: cells take ownership; pixels are already correct so
+                 * no extra paint needed for the latched piece. Exit hard-drop
+                 * so inputs unlock for the next piece. Game-over (spawn into
+                 * an occupied cell) is deferred to step 7. */
+                board_latch(&board, &active, active_color_idx);
                 in_hard_drop = 0;
+
+                active_color_idx = COLOR_T;
+                t_shape_init(&active, 3, 0, 0);
+                render_shape(&lcd, &active, active_color_idx);
             }
         }
     }
