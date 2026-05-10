@@ -84,10 +84,42 @@ void board_check_lines(Board *b);
  * read->write on non-full, wipe everything above the final write index. */
 uint8_t board_clear_lines(Board *b);
 
-/* Zero line_formed[], lines_filled, total_lines. Call after consuming
- * total_lines for scoring. Mirrors C++ Board::reset_lines_deltas
- * (shapes/utils.h:286-290) -- minus deltas[], which only step 5
- * (animation) populates. */
+/* Zero line_formed[], deltas[], lines_filled, total_lines. Call after
+ * consuming total_lines for scoring. Mirrors C++ Board::reset_lines_deltas
+ * (shapes/utils.h:286-290). */
 void board_reset_lines(Board *b);
+
+/* --- step 5: animated clear support -------------------------------------- *
+ * The width sweep wipes each full row column-by-column over time; the
+ * height drop then shifts the surviving rows down. The three functions
+ * below are the per-tick board mutations the animation state machine in
+ * main.c calls. None of them touch the LCD -- the caller is responsible
+ * for repainting the small set of cells that changed. */
+
+/* Compute deltas[y] = number of full rows in rows [y+1, BOARD_H-1].
+ * deltas[BOARD_H-1] is forced to 0 (nothing below the floor). Tells each
+ * row how far down it will fall during the height animation. Call once
+ * when the width sweep finishes. Faithful port of C++ calculate_delta
+ * (shapes/utils.h:293-303). */
+void board_calculate_deltas(Board *b);
+
+/* One width-sweep tick: clear cells (left, y) and (right, y) for every
+ * full row. Cheap: scans BOARD_H rows, writes 2 cells per marked row.
+ * Faithful port of C++ clean_lines_selectively (shapes/utils.h:257-266). */
+void board_clean_lines_selectively(Board *b, uint8_t left, uint8_t right);
+
+/* One height-drop tick: shift row line_no down by deltas[line_no] cells.
+ * If line_no is itself a full row (already wiped by the width sweep), or
+ * if deltas[line_no] is 0 (nothing below to fall into), this is a no-op.
+ * Otherwise: copy cells[line_no][*] -> cells[line_no + del_y][*], then
+ * CLEAR cells[line_no][*] (so the row appears at its destination only,
+ * not at both source and destination).
+ *
+ * The source-clear is our intentional fix over C++ clear_lines_selectively
+ * (shapes/utils.h:268-284) which copies but never erases. The C++ version
+ * leaves a "ghost" of the falling row at its old position -- the bug is
+ * subtle enough to not be obvious in casual play but is a real visual
+ * artefact when a piece sits a couple of rows above the cleared zone. */
+void board_clear_lines_selectively(Board *b, int8_t line_no);
 
 #endif

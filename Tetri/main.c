@@ -18,6 +18,13 @@
 #define GRAVITY_MS      1000U
 #define HARD_DROP_MS    62U      /* matches downward_ghost_speed in C++ ref  */
 
+/* Animation tick rates. With BOARD_W=10, the width sweep takes 5 ticks
+ * (left/right meet in 5 steps from either direction); the height drop
+ * takes BOARD_H = 20 ticks. At 30 ms/tick: ~150 ms sweep + ~600 ms drop
+ * = ~750 ms total clear animation, which feels right for arcade Tetris. */
+#define WIDTH_TICK_MS   30U
+#define HEIGHT_TICK_MS  30U
+
 #define SCREEN_W        130            /* matches MAX_X in common/st7735.h   */
 #define SCREEN_H        161            /* matches MAX_Y in common/st7735.h   */
 #define BOARD_PX_W      (BOARD_W * BLOCK_PIXELS)
@@ -59,34 +66,31 @@ static void render_shape(struct st7735 *lcd, const Shape *s, uint8_t color_idx) 
     }
 }
 
-/* ---- board repaint (dirty range) ---------------------------------------- *
- * Paints every cell in rows [top_y, BOARD_H-1] to its current colour --
- * BG (palette[0]) for empties, palette[idx] for stack cells. NO big erase
- * first: each cell transitions directly old-colour -> new-colour, which
- * eliminates the "flash to black" flicker the full-playfield erase
- * created. Empty cells get an unnecessary BG repaint, but that's ~14 ms
- * of SPI vs the ~50 ms erase it replaces -- a net win.
+/* ---- per-cell / per-row paint primitives -------------------------------- *
+ * paint_cell paints one 8x8 block at board cell (y, x) using the colour
+ * currently in cells[y][x] (palette[0] for empty). paint_row is just 10
+ * paint_cells across one row. Both are used by the animation tick to push
+ * tiny dirty regions to the LCD without flicker -- each cell transitions
+ * directly old-colour -> new-colour, never through a BG flash.
  *
- * top_y is the row above which nothing could have changed. Caller passes
- * the pre-clear `height_peak`: rows above the old stack top were empty
- * before, are still empty after, no repaint needed. For a stack 5 rows
- * tall (peak at y=15), this paints 5*10 = 50 cells instead of 200.
+ * Sizing: paint_cell is ~0.3 ms of SPI per call (8x8 px = 128 bytes data
+ * + a handful of command bytes). paint_row is ~2.8 ms. The animation
+ * touches at most 2 cells per width tick and 2 rows per height tick, so
+ * each tick is ~6 ms worst case against a 30 ms tick budget -- plenty of
+ * headroom.
  *
- * Moves to tet_render/ alongside render_shape in step 6.
+ * Both move to tet_render/ alongside render_shape in step 6.
  * --------------------------------------------------------------------------*/
-static void render_board(struct st7735 *lcd, const Board *b, int8_t top_y) {
-    if (top_y < 0)              top_y = 0;
-    if (top_y >= (int8_t)BOARD_H) return;
+static void paint_cell(struct st7735 *lcd, const Board *b, uint8_t y, uint8_t x) {
+    uint16_t rgb = palette[b->cells[y][x]];
+    uint8_t xs = (uint8_t)(BOARD_OFFSET_X + x * BLOCK_PIXELS);
+    uint8_t ys = (uint8_t)(BOARD_OFFSET_Y + y * BLOCK_PIXELS);
+    ST7735_DrawRectangle(lcd, xs, xs + BLOCK_PIXELS - 1,
+                              ys, ys + BLOCK_PIXELS - 1, rgb);
+}
 
-    for (uint8_t y = (uint8_t)top_y; y < BOARD_H; y++) {
-        for (uint8_t x = 0; x < BOARD_W; x++) {
-            uint16_t rgb = palette[b->cells[y][x]];
-            uint8_t xs = (uint8_t)(BOARD_OFFSET_X + x * BLOCK_PIXELS);
-            uint8_t ys = (uint8_t)(BOARD_OFFSET_Y + y * BLOCK_PIXELS);
-            ST7735_DrawRectangle(lcd, xs, xs + BLOCK_PIXELS - 1,
-                                      ys, ys + BLOCK_PIXELS - 1, rgb);
-        }
-    }
+static void paint_row(struct st7735 *lcd, const Board *b, uint8_t y) {
+    for (uint8_t x = 0; x < BOARD_W; x++) paint_cell(lcd, b, y, x);
 }
 
 /* ---- playfield frame ---------------------------------------------------- *
@@ -138,6 +142,110 @@ static void spawn_next(Shape *s, uint8_t *color_idx) {
     if (corr) shape_update_position(s, corr, 0);
 }
 
+/* ---- line-clear animation state machine --------------------------------- *
+ * Two sequential timer-driven phases replicate testing_main.cpp:373-425:
+ *
+ *   phase 1 (width sweep, ~150 ms):
+ *     Erase cells (left, y) and (right, y) for every full row y.
+ *     Direction is randomised 50/50:
+ *       width_dir = +1 (outside-in): left starts at 0, right at W-1,
+ *                  each tick pulls them inward.
+ *       width_dir = -1 (inside-out): left starts at W/2 + (W%2 - 1),
+ *                  right at W/2, each tick pushes them outward.
+ *     For W = 10 either direction takes exactly 5 ticks.
+ *     End: left/right cross or leave [0, W-1].
+ *
+ *   phase 2 (height drop, ~600 ms):
+ *     For each row y from H-1 down to 0, copy cells[y] to cells[y+deltas[y]]
+ *     and clear cells[y]. Full rows (already wiped in phase 1) are no-ops.
+ *     End: height_y reaches -1.
+ *
+ * On end, height_peak is bumped (old + total_lines, clamped), the line
+ * bookkeeping is reset, and the caller spawns the next piece.
+ * --------------------------------------------------------------------------*/
+typedef struct {
+    uint8_t  phase;          /* 0 = idle, 1 = width, 2 = height            */
+    int8_t   width_left;
+    int8_t   width_right;
+    int8_t   width_dir;      /* +1 outside-in, -1 inside-out               */
+    int8_t   height_y;       /* row currently being shifted; counts down   */
+    uint16_t prev_ms;        /* wall-clock of the last tick                */
+} AnimState;
+
+static void anim_start(AnimState *a, uint16_t now) {
+    /* 50/50 direction roll. Reuses the spawn RNG -- one extra byte from
+     * the cycle, no separate stream needed. */
+    if (rng_next8() & 1) {
+        a->width_dir   = +1;
+        a->width_left  = 0;
+        a->width_right = (int8_t)(BOARD_W - 1);
+    } else {
+        a->width_dir   = -1;
+        a->width_right = (int8_t)(BOARD_W / 2);
+        a->width_left  = (int8_t)(a->width_right + (BOARD_W % 2 - 1));
+    }
+    a->height_y = (int8_t)(BOARD_H - 1);
+    a->prev_ms  = now;
+    a->phase    = 1;
+}
+
+static void anim_tick(struct st7735 *lcd, Board *b, AnimState *a, uint16_t now) {
+    if (a->phase == 1) {
+        /* Width sweep. */
+        if ((uint16_t)(now - a->prev_ms) < WIDTH_TICK_MS) return;
+        a->prev_ms = now;
+
+        if (a->width_left >= 0 && a->width_right < (int8_t)BOARD_W &&
+            a->width_left <= a->width_right) {
+            uint8_t L = (uint8_t)a->width_left;
+            uint8_t R = (uint8_t)a->width_right;
+            board_clean_lines_selectively(b, L, R);
+            for (uint8_t y = 0; y < BOARD_H; y++) {
+                if (!b->line_formed[y]) continue;
+                paint_cell(lcd, b, y, L);
+                if (L != R) paint_cell(lcd, b, y, R);
+            }
+            a->width_left  = (int8_t)(a->width_left  + a->width_dir);
+            a->width_right = (int8_t)(a->width_right - a->width_dir);
+        } else {
+            /* Width done -- compute fall distances and step into height. */
+            board_calculate_deltas(b);
+            a->phase = 2;
+        }
+        return;
+    }
+
+    if (a->phase == 2) {
+        /* Height drop. */
+        if ((uint16_t)(now - a->prev_ms) < HEIGHT_TICK_MS) return;
+        a->prev_ms = now;
+
+        if (a->height_y >= 0) {
+            uint8_t y       = (uint8_t)a->height_y;
+            uint8_t did_move = (uint8_t)(!b->line_formed[y] && b->deltas[y] > 0);
+            uint8_t dst     = (uint8_t)(y + b->deltas[y]);
+
+            board_clear_lines_selectively(b, a->height_y);
+            if (did_move) {
+                /* Source row was non-empty -> now empty. Dest row got the
+                 * new content. Repaint both; that's 20 cells / ~6 ms. */
+                paint_row(lcd, b, y);
+                paint_row(lcd, b, dst);
+            }
+            a->height_y--;
+        } else {
+            /* Animation finished. Bump height_peak the same way instant
+             * clear did (old + total_lines, clamped at BOARD_H sentinel),
+             * then reset line bookkeeping. Spawning is the caller's job. */
+            int16_t new_peak = (int16_t)b->height_peak + (int16_t)b->total_lines;
+            if (new_peak > (int16_t)BOARD_H) new_peak = (int16_t)BOARD_H;
+            b->height_peak = (int8_t)new_peak;
+            board_reset_lines(b);
+            a->phase = 0;
+        }
+    }
+}
+
 /* ---- main ---------------------------------------------------------------- */
 int main(void) {
     struct signal cs = { .ddr = &DDRB, .port = &PORTB, .pin = 4 };  /* SS  on PB4 */
@@ -157,10 +265,12 @@ int main(void) {
 
     /* Game state. Color is a sibling local, not a Shape field
      * (see avr-c-port-design.mdc). */
-    Board   board;
-    Shape   active;
-    uint8_t active_color_idx;
-    uint8_t in_hard_drop = 0;       /* 1 = fast-falling; inputs locked */
+    Board     board;
+    Shape     active;
+    uint8_t   active_color_idx;
+    uint8_t   in_hard_drop = 0;     /* 1 = fast-falling; inputs locked    */
+    AnimState anim;
+    anim.phase = 0;                 /* start idle; no clear in progress   */
 
     board_init(&board);
     spawn_next(&active, &active_color_idx);
@@ -170,6 +280,23 @@ int main(void) {
 
     while (1) {
         uint16_t now = timer_now_ms();
+
+        /* ---- line-clear animation short-circuit ------------------------ *
+         * While a clear is animating, gravity and inputs are frozen. The
+         * tick advances state on the timer and, if the animation just
+         * finished, spawns the next piece + resets the gravity clock so
+         * the new piece doesn't insta-drop on the very next iteration.
+         * Mirrors the C++ pattern of gating spawn / gravity on
+         * !board.is_lines_formed(). */
+        if (anim.phase != 0) {
+            anim_tick(&lcd, &board, &anim, now);
+            if (anim.phase == 0) {
+                spawn_next(&active, &active_color_idx);
+                render_shape(&lcd, &active, active_color_idx);
+                prev_ms = now;
+            }
+            continue;
+        }
 
         /* ---- inputs (gated entirely while hard-drop is in progress) ---- *
          * Mirrors the C++ pattern of guarding every input with
@@ -231,22 +358,18 @@ int main(void) {
                 board_latch(&board, &active, active_color_idx);
                 in_hard_drop = 0;
 
-                /* Line clear (instant -- step 4). Animation is step 5.
-                 * Score wiring is step 6 (HUD); for now the cleared count
-                 * is observed only via the visual collapse. We snapshot
-                 * the pre-clear height_peak as the dirty-region top --
-                 * rows above the old stack top can't have changed, so
-                 * skipping them saves a chunk of SPI per clear. */
+                /* Line clear (animated -- step 5). If any lines formed,
+                 * hand off to the animation state machine; the short-circuit
+                 * at the top of the loop will tick the clear over ~750 ms
+                 * and spawn the next piece when it's done. If no lines,
+                 * spawn immediately as before. */
                 board_check_lines(&board);
                 if (board.lines_filled) {
-                    int8_t dirty_top = board.height_peak;
-                    board_clear_lines(&board);
-                    board_reset_lines(&board);
-                    render_board(&lcd, &board, dirty_top);
+                    anim_start(&anim, now);
+                } else {
+                    spawn_next(&active, &active_color_idx);
+                    render_shape(&lcd, &active, active_color_idx);
                 }
-
-                spawn_next(&active, &active_color_idx);
-                render_shape(&lcd, &active, active_color_idx);
             }
         }
     }

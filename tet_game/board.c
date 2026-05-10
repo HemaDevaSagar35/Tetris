@@ -99,7 +99,50 @@ uint8_t board_clear_lines(Board *b) {
 }
 
 void board_reset_lines(Board *b) {
-    for (uint8_t y = 0; y < BOARD_H; y++) b->line_formed[y] = 0;
+    for (uint8_t y = 0; y < BOARD_H; y++) {
+        b->line_formed[y] = 0;
+        b->deltas[y]      = 0;
+    }
     b->lines_filled = 0;
     b->total_lines  = 0;
+}
+
+void board_calculate_deltas(Board *b) {
+    /* Walk bottom-up. counter accumulates the number of full rows we've
+     * seen so far (i.e. rows that will disappear). We assign that count to
+     * the row JUST ABOVE the current one, because rows fall by "how many
+     * full rows are below me". Loop bound `i > 0` matches the C++ ref --
+     * deltas[BOARD_H-1] never gets written (the floor row has nothing to
+     * fall into) so we explicitly zero it. */
+    uint8_t counter = 0;
+    for (int8_t i = (int8_t)(BOARD_H - 1); i > 0; i--) {
+        if (b->line_formed[i]) counter++;
+        b->deltas[i - 1] = counter;
+    }
+    b->deltas[BOARD_H - 1] = 0;
+}
+
+void board_clean_lines_selectively(Board *b, uint8_t left, uint8_t right) {
+    for (uint8_t y = 0; y < BOARD_H; y++) {
+        if (!b->line_formed[y]) continue;
+        b->cells[y][left]  = 0;
+        b->cells[y][right] = 0;
+    }
+}
+
+void board_clear_lines_selectively(Board *b, int8_t line_no) {
+    /* Bounds + skip-full guard. line_no is signed only because the caller
+     * counts down from BOARD_H-1 and may briefly be out of range during
+     * the transition. */
+    if (line_no < 0 || line_no >= (int8_t)BOARD_H) return;
+    if (b->line_formed[line_no]) return;
+
+    uint8_t del_y = b->deltas[line_no];
+    if (del_y == 0) return;            /* nothing below to fall into */
+
+    int8_t  dst = (int8_t)(line_no + del_y);
+    for (uint8_t x = 0; x < BOARD_W; x++) {
+        b->cells[dst][x]     = b->cells[line_no][x];
+        b->cells[line_no][x] = 0;
+    }
 }
