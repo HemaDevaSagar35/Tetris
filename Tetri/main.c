@@ -6,15 +6,14 @@
 #include "rules.h"
 #include "factory.h"
 #include "rng.h"
+#include "render.h"      /* render_shape, paint_cell, draw_board_frame,
+                            BLOCK_PIXELS, BOARD_OFFSET_*                  */
+#include "hud.h"         /* render_hud_score                              */
 
 /* ---- tunable knobs ------------------------------------------------------- *
- * Classic Tetris playfield is 10 wide x 20 tall (BOARD_W/BOARD_H now live in
- * tet_game/board.h since they describe game state, not rendering). ST7735 is
- * 130 x 161 px.
- *   board pixel size = 10*8 x 20*8 = 80 x 160
- *   offsets center the board horizontally (vertically it's already flush).
+ * Rendering geometry (BLOCK_PIXELS, BOARD_OFFSET_*, palette) moved to
+ * tet_render/. main.c only holds game-loop tuning now.
  * --------------------------------------------------------------------------*/
-#define BLOCK_PIXELS    8
 #define GRAVITY_MS      1000U
 #define HARD_DROP_MS    62U      /* matches downward_ghost_speed in C++ ref  */
 
@@ -25,85 +24,9 @@
 #define WIDTH_TICK_MS   30U
 #define HEIGHT_TICK_MS  30U
 
-#define SCREEN_W        130            /* matches MAX_X in common/st7735.h   */
-#define SCREEN_H        161            /* matches MAX_Y in common/st7735.h   */
-#define BOARD_PX_W      (BOARD_W * BLOCK_PIXELS)
-#define BOARD_PX_H      (BOARD_H * BLOCK_PIXELS)
-#define BOARD_OFFSET_X  ((SCREEN_W - BOARD_PX_W) / 2)   /* = 25 */
-#define BOARD_OFFSET_Y  ((SCREEN_H - BOARD_PX_H) / 2)   /* =  0 */
-
-/* ---- palette ------------------------------------------------------------- *
- * COLOR_* indices live in tet_game/factory.h (they're game-state values,
- * stored in the Board). This array is the renderer-side mapping from
- * those indices to RGB565 for the ST7735. Both move to
- * tet_render/palette.{h,c} in step 6.
- * --------------------------------------------------------------------------*/
-static const uint16_t palette[COLOR_COUNT] = {
-    [COLOR_BG] = BLACK,
-    [COLOR_T]  = 0xFFE0,    /* yellow */
-    [COLOR_I]  = 0x07FF,    /* cyan   */
-    [COLOR_O]  = 0xFD20,    /* orange */
-    [COLOR_L]  = 0x001F,    /* blue   */
-    [COLOR_J]  = 0xFB56,    /* pink   */
-    [COLOR_S]  = 0x07E0,    /* green  */
-    [COLOR_Z]  = 0xF800,    /* red    */
-};
-
-/* ---- rendering ----------------------------------------------------------- *
- * Renders 4 filled rectangles for the tetromino at its current logical
- * coords, offset into the centered playfield. Pass COLOR_BG to erase.
- * ST7735_DrawRectangle uses INCLUSIVE endpoints, so xe = xs + BLOCK_PIXELS-1
- * covers exactly BLOCK_PIXELS px.
- * --------------------------------------------------------------------------*/
-static void render_shape(struct st7735 *lcd, const Shape *s, uint8_t color_idx) {
-    uint16_t rgb = palette[color_idx];
-    const Pixel *blocks = shape_get_blocks(s);
-    for (uint8_t i = 0; i < SHAPE_BLOCKS; i++) {
-        uint8_t xs = (uint8_t)(BOARD_OFFSET_X + blocks[i].x * BLOCK_PIXELS);
-        uint8_t ys = (uint8_t)(BOARD_OFFSET_Y + blocks[i].y * BLOCK_PIXELS);
-        ST7735_DrawRectangle(lcd, xs, xs + BLOCK_PIXELS - 1,
-                                  ys, ys + BLOCK_PIXELS - 1, rgb);
-    }
-}
-
-/* ---- per-cell / per-row paint primitives -------------------------------- *
- * paint_cell paints one 8x8 block at board cell (y, x) using the colour
- * currently in cells[y][x] (palette[0] for empty). paint_row is just 10
- * paint_cells across one row. Both are used by the animation tick to push
- * tiny dirty regions to the LCD without flicker -- each cell transitions
- * directly old-colour -> new-colour, never through a BG flash.
- *
- * Sizing: paint_cell is ~0.3 ms of SPI per call (8x8 px = 128 bytes data
- * + a handful of command bytes). paint_row is ~2.8 ms. The animation
- * touches at most 2 cells per width tick and 2 rows per height tick, so
- * each tick is ~6 ms worst case against a 30 ms tick budget -- plenty of
- * headroom.
- *
- * Both move to tet_render/ alongside render_shape in step 6.
- * --------------------------------------------------------------------------*/
-static void paint_cell(struct st7735 *lcd, const Board *b, uint8_t y, uint8_t x) {
-    uint16_t rgb = palette[b->cells[y][x]];
-    uint8_t xs = (uint8_t)(BOARD_OFFSET_X + x * BLOCK_PIXELS);
-    uint8_t ys = (uint8_t)(BOARD_OFFSET_Y + y * BLOCK_PIXELS);
-    ST7735_DrawRectangle(lcd, xs, xs + BLOCK_PIXELS - 1,
-                              ys, ys + BLOCK_PIXELS - 1, rgb);
-}
-
-/* ---- playfield frame ---------------------------------------------------- *
- * Draw a 1-px white "U" border around the playfield (left + right + bottom).
- * The top is intentionally open so pieces visibly enter from above.
- * Called once at boot. Move to tet_render/ alongside palette later.
- * --------------------------------------------------------------------------*/
-static void draw_board_frame(struct st7735 *lcd) {
-    uint8_t left   = BOARD_OFFSET_X - 1;
-    uint8_t right  = BOARD_OFFSET_X + BOARD_PX_W;
-    uint8_t top    = BOARD_OFFSET_Y;
-    uint8_t bottom = BOARD_OFFSET_Y + BOARD_PX_H;        /* one px below playfield */
-
-    ST7735_DrawRectangle(lcd, left,  left,  top, bottom, WHITE);   /* left bar   */
-    ST7735_DrawRectangle(lcd, right, right, top, bottom, WHITE);   /* right bar  */
-    ST7735_DrawRectangle(lcd, left,  right, bottom, bottom, WHITE);/* bottom bar */
-}
+/* Score cap matches the 3-digit HUD field. Score is a running total of
+ * lines cleared, ported verbatim from testing_main.cpp:418-420. */
+#define SCORE_MAX       999U
 
 /* ---- spawn --------------------------------------------------------------- *
  * Roll a random piece, x, and rotation; init it in `s`; write its color
@@ -291,10 +214,12 @@ int main(void) {
     uint8_t   in_hard_drop = 0;     /* 1 = fast-falling; inputs locked    */
     AnimState anim = {0};           /* phase=0 (idle); other fields seeded
                                        by anim_start when a clear begins  */
+    uint16_t  score = 0;            /* running total of lines cleared     */
 
     board_init(&board);
     spawn_next(&active, &active_color_idx);
     render_shape(&lcd, &active, active_color_idx);
+    render_hud_score(&lcd, score);
 
     uint16_t prev_ms = timer_now_ms();
 
@@ -309,8 +234,26 @@ int main(void) {
          * Mirrors the C++ pattern of gating spawn / gravity on
          * !board.is_lines_formed(). */
         if (anim.phase != 0) {
+            /* Snapshot total_lines before the tick. anim_tick calls
+             * board_reset_lines() on the final phase-2 tick, which zeros
+             * total_lines -- so reading after the tick would always give 0
+             * when the animation just finished. Mirrors the C++ pattern
+             * of grabbing get_total_lines() inside the "is_lines_formed()"
+             * block before reset_lines_deltas() runs. */
+            uint8_t cleared = board.total_lines;
             anim_tick(&lcd, &board, &anim, now);
             if (anim.phase == 0) {
+                /* Animation done: apply scoring rule from
+                 * testing_main.cpp:418-420 (score += total_lines), then
+                 * saturate at SCORE_MAX so the 3-digit HUD stays in range. */
+                uint16_t new_score = (uint16_t)(score + cleared);
+                if (new_score > SCORE_MAX || new_score < score) {
+                    new_score = SCORE_MAX;        /* overflow guard too */
+                }
+                if (new_score != score) {
+                    score = new_score;
+                    render_hud_score(&lcd, score);
+                }
                 spawn_next(&active, &active_color_idx);
                 render_shape(&lcd, &active, active_color_idx);
                 prev_ms = now;
