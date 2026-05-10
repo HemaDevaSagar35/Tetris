@@ -7,43 +7,61 @@
 /* ---- HUD layout --------------------------------------------------------- *
  * The playfield is centered in a 130 px screen with ~25 px on each side.
  *
- *   LEFT  margin (x = 0 .. 24): score readout (current + max).
- *   RIGHT margin (x = 105 .. 129): next-piece preview (added in Phase 2).
+ *   LEFT  margin (x = 0 .. 24): score readout (current + max + level).
+ *   RIGHT margin (x = 105 .. 129): next-piece preview.
+ *
+ * Step 9 reworked the left HUD for NES-style scoring (six-digit numbers
+ * up to 999,999). Each number now uses 6 digits at the un-scaled 3x5
+ * bitmap (SCORE_PX = 1) so all 6 digits fit in a single 23-px row inside
+ * the 25-px margin. We trade some legibility (digits are smaller) for
+ * the ability to display real NES scores in one line.
  *
  * Left HUD stack (top -> bottom):
  *
- *      y=  4..11   "SCR"    X1 label (5x8 font, 17 px wide)
- *      y= 14..23    digits  current score, 3 digits, pixel-doubled to 6x10
- *      y= 27..34   "MAX"    X1 label
- *      y= 37..46    digits  max score, same style as current
+ *      y=  8.. 15   "SCR"    X1 label (5x8 font, 17 px wide)
+ *      y= 18.. 22    digits  current score, 6 digits, 1x scale (5 px tall)
+ *      y= 32.. 39   "MAX"    X1 label
+ *      y= 42.. 46    digits  max score, same style as current
+ *      y= 56.. 63   "LVL"    X1 label
+ *      y= 66.. 70    digits  current level, 2 digits, 1x scale
+ *
+ * Block delta is 24 px (label + 2 px gap + 5 px digits + 8 px breathing
+ * room before the next label). The whole stack uses y = 8..70 (63 px),
+ * well inside the 160 px screen height.
  *
  * Score digits use the same 3-col x 5-row bitmap as `testing_main.cpp`
- * `ScoreBoard::DIGITS`, pixel-doubled to 6 x 10 LCD pixels for legibility.
- * Inter-digit gap = 1 px. Both score blocks share the same x-origin
- * (HUD_LEFT_X) so they line up visually.
+ * `ScoreBoard::DIGITS`. Inter-digit gap = 1 px. All three readouts share
+ * the same x-origin (HUD_LEFT_X) so they line up visually.
  *
  * Update rules:
- *   - Current score: ports testing_main.cpp:418-420 verbatim --
- *       score = score + board.total_lines
- *     fired when the line-clear animation finishes. Saturates at 999.
+ *   - Current score: NES formula on every clear --
+ *       score += {0,40,100,300,1200}[cleared] * (level + 1)
+ *     fired when the line-clear animation finishes. Saturates at 999,999
+ *     so the 6-digit field stays in range.
  *   - Max score: persisted to EEPROM. Read once at boot, only re-written
- *     at game-over when the current run beat the previous max. Player
+ *     at game-over when the current run beat the previous max. The player
  *     sees the new max paint to the HUD WHILE the GAME OVER overlay is
  *     up (the overlay is on the playfield; the left margin stays clear).
+ *   - Level: tracked as floor(lines_cleared / 10), clamped to 29.
+ *     Updated on every clear; the gravity speed-up is driven off this.
  *
- * Render cost per score: 15 fat-pixel rectangles (3*5 cells per digit) *
- * 3 digits at ~150 us per rectangle on a 4 MHz SPI = ~7 ms total. Labels
- * are drawn once per game (in reset_game), not per score change.        */
+ * Render cost per score: 6 digits * 15 cells = 90 single-pixel rectangles
+ * at ~150 us each = ~14 ms per repaint. Only fires on line-clear / game-
+ * over, never in the hot path. Labels are drawn once per game in
+ * reset_game, never repainted on value change.                          */
 
 #define HUD_LEFT_X        2
-#define HUD_SCR_LABEL_Y   4
-#define HUD_SCORE_DIG_Y   14
-#define HUD_MAX_LABEL_Y   27
-#define HUD_MAX_DIG_Y     37
+#define HUD_SCR_LABEL_Y   8
+#define HUD_SCORE_DIG_Y   18
+#define HUD_MAX_LABEL_Y   32
+#define HUD_MAX_DIG_Y     42
+#define HUD_LVL_LABEL_Y   56
+#define HUD_LVL_DIG_Y     66
 
 void render_hud_labels(struct st7735 *lcd);
-void render_hud_score(struct st7735 *lcd, uint16_t score);
-void render_hud_max_score(struct st7735 *lcd, uint16_t max_score);
+void render_hud_score(struct st7735 *lcd, uint32_t score);
+void render_hud_max_score(struct st7735 *lcd, uint32_t max_score);
+void render_hud_level(struct st7735 *lcd, uint8_t level);
 
 /* Next-piece preview (Step 6 phase 2):
  *   - 4 x 4 cell grid (NEXT_BOX_CELLS = 4); fits the widest piece (I = 4

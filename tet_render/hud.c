@@ -7,11 +7,18 @@
 
 /* ---- score layout constants --------------------------------------------- *
  * Public x/y origins live in hud.h (HUD_LEFT_X, HUD_SCORE_DIG_Y,
- * HUD_MAX_DIG_Y, HUD_SCR_LABEL_Y, HUD_MAX_LABEL_Y). The pixel-scale
- * tuning stays private here.                                              */
-#define SCORE_PX       2     /* pixel-doubling scale for the 3x5 bitmap      */
-#define SCORE_GAP_PX   1     /* inter-digit gap in screen pixels             */
-#define SCORE_DIGITS   3     /* 3 digits -> caps at 999                      */
+ * HUD_MAX_DIG_Y, HUD_LVL_DIG_Y, HUD_*_LABEL_Y). The pixel-scale
+ * tuning stays private here.
+ *
+ * SCORE_PX shrank from 2 -> 1 in step 9 so we can fit 6 digits in the
+ * 25-px left margin (6 * 3 + 5 * 1 = 23 px). Trade: digits are half as
+ * tall and half as wide. Inter-digit gap stays at 1 px for legibility.
+ * Score readouts are 6 digits (cap 999,999 -- NES range), level readout
+ * is 2 digits (cap 29 -- NES kill screen).                              */
+#define SCORE_PX       1     /* 1:1 scale for the 3x5 bitmap                  */
+#define SCORE_GAP_PX   1     /* inter-digit gap in screen pixels              */
+#define SCORE_DIGITS   6     /* 6 digits -> caps at 999,999                   */
+#define LVL_DIGITS     2     /* 2 digits -> caps at 99 (we clamp to 29)       */
 
 /* ---- 3x5 digit bitmap --------------------------------------------------- *
  * Byte-for-byte the same table as testing_main.cpp ScoreBoard::DIGITS
@@ -54,42 +61,70 @@ static void draw_digit(struct st7735 *lcd, uint8_t digit,
     }
 }
 
-/* Shared 3-digit painter. Caller picks the y-origin so the same routine
- * serves both the current score and the max score (they share the x-origin
- * HUD_LEFT_X to stay visually column-aligned). Values > 999 saturate.    */
-static void draw_3digits(struct st7735 *lcd, uint16_t value, uint8_t origin_y) {
-    if (value > 999) value = 999;
+/* Shared N-digit painter. Caller picks the y-origin and digit count so
+ * the same routine paints all three readouts (6-digit score / max,
+ * 2-digit level). All readouts share the x-origin HUD_LEFT_X to stay
+ * visually column-aligned.
+ *
+ * `n_digits` is bounded at compile time by callers (max 6 today), but we
+ * iterate up to a small fixed cap so the digits[] stack buffer stays
+ * bounded -- no heap, no VLA, and the buffer cost is one byte per
+ * possible digit. 8 is generous (allows up to 8-digit numbers if we
+ * ever widen the field).
+ *
+ * Saturation: any value that won't fit in n_digits decimal digits gets
+ * clamped to "all 9s" so the field never wraps to 0 silently.          */
+static void draw_Ndigits(struct st7735 *lcd, uint32_t value,
+                         uint8_t origin_y, uint8_t n_digits) {
+    /* Compute 10^n_digits to derive the saturation cap. n_digits is
+     * small (<=8); this loop is cheap and avoids pulling in a generic
+     * pow(). */
+    uint32_t cap = 1;
+    for (uint8_t i = 0; i < n_digits; i++) cap *= 10u;
+    if (value >= cap) value = cap - 1u;
 
-    uint8_t digits[SCORE_DIGITS];
-    digits[0] = (uint8_t)(value / 100);
-    digits[1] = (uint8_t)((value / 10) % 10);
-    digits[2] = (uint8_t)(value % 10);
+    /* Extract digits from least-significant to most-significant, then
+     * paint left-to-right. Stack buffer sized for the largest n_digits
+     * we expect (6 for score, 2 for level). */
+    uint8_t digits[8];
+    for (uint8_t i = 0; i < n_digits; i++) {
+        digits[n_digits - 1 - i] = (uint8_t)(value % 10u);
+        value /= 10u;
+    }
 
     uint8_t cursor_x  = HUD_LEFT_X;
     uint8_t advance_x = (uint8_t)(3 * SCORE_PX + SCORE_GAP_PX);
-    for (uint8_t i = 0; i < SCORE_DIGITS; i++) {
+    for (uint8_t i = 0; i < n_digits; i++) {
         draw_digit(lcd, digits[i], cursor_x, origin_y);
         cursor_x = (uint8_t)(cursor_x + advance_x);
     }
 }
 
 void render_hud_labels(struct st7735 *lcd) {
-    /* "SCR" and "MAX" never change once painted; called once per game
-     * (in reset_game) and not on every score update. WHITE text on BLACK
-     * background -- BG was just cleared by ST7735_ClearScreen, so no
-     * separate erase is needed. */
+    /* "SCR" / "MAX" / "LVL" never change once painted; called once per
+     * game (in reset_game) and not on every value update. WHITE text on
+     * BLACK background -- BG was just cleared by ST7735_ClearScreen, so
+     * no separate erase is needed. */
     ST7735_SetPosition(HUD_LEFT_X, HUD_SCR_LABEL_Y);
     ST7735_DrawString(lcd, "SCR", WHITE, X1);
     ST7735_SetPosition(HUD_LEFT_X, HUD_MAX_LABEL_Y);
     ST7735_DrawString(lcd, "MAX", WHITE, X1);
+    ST7735_SetPosition(HUD_LEFT_X, HUD_LVL_LABEL_Y);
+    ST7735_DrawString(lcd, "LVL", WHITE, X1);
 }
 
-void render_hud_score(struct st7735 *lcd, uint16_t score) {
-    draw_3digits(lcd, score, HUD_SCORE_DIG_Y);
+void render_hud_score(struct st7735 *lcd, uint32_t score) {
+    draw_Ndigits(lcd, score, HUD_SCORE_DIG_Y, SCORE_DIGITS);
 }
 
-void render_hud_max_score(struct st7735 *lcd, uint16_t max_score) {
-    draw_3digits(lcd, max_score, HUD_MAX_DIG_Y);
+void render_hud_max_score(struct st7735 *lcd, uint32_t max_score) {
+    draw_Ndigits(lcd, max_score, HUD_MAX_DIG_Y, SCORE_DIGITS);
+}
+
+void render_hud_level(struct st7735 *lcd, uint8_t level) {
+    /* level is 0..29 in practice (gravity table clamps); widened to
+     * uint32_t here just to fit draw_Ndigits' signature. */
+    draw_Ndigits(lcd, (uint32_t)level, HUD_LVL_DIG_Y, LVL_DIGITS);
 }
 
 /* ---- next-piece preview ------------------------------------------------- */

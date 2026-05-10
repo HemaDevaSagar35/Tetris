@@ -13,33 +13,88 @@
                             _start_overlay, game-over overlay helpers     */
 
 /* ---- persistent max score (EEPROM) -------------------------------------- *
- * Single uint16_t stored in EEPROM byte address 0..1 (the linker assigns
- * `EEMEM` variables in declaration order; this is the only one we use).
+ * EEPROM layout (5 bytes total, in `EEMEM` declaration order):
  *
- * Lifecycle:
- *   - Boot: eeprom_read_word() -> max_score. A freshly-flashed chip reads
- *     0xFFFF for un-touched bytes; we treat that as "no max yet" and
- *     display 000. The HEX flasher can also explicitly zero the EEPROM
- *     section, but we don't depend on that.
- *   - Game-over: if score > max_score, update RAM copy + eeprom_update_word()
- *     (which skips the write when bytes are already correct, so no
- *     unnecessary wear). EEPROM is rated ~100k writes; a serious player
- *     setting a new high score every minute would still take ~70 days
- *     of continuous play to wear out the cell.
- *   - Reset (YES + DOWN): max_score in RAM is intentionally NOT cleared.
- *     The only way to clear is to reflash with -e (chip erase).
+ *   addr 0     : ee_version    (uint8_t)  -- format sentinel, magic 0xA5
+ *   addr 1..4  : ee_max_score  (uint32_t) -- best score ever, little-endian
+ *
+ * Step 9 widened ee_max_score from uint16_t -> uint32_t to hold NES-style
+ * scores up to 999,999. That layout shift is incompatible with the step-8
+ * encoding (which had ee_max_score at addr 0..1), so we added the version
+ * sentinel at addr 0 to detect old contents.
+ *
+ * Boot path:
+ *   1. eeprom_read_byte(&ee_version)
+ *      - 0xA5  -> current layout: read max_score as a dword.
+ *      - other -> "fresh or stale" -- treat max_score as 0, write back
+ *                 the magic + zeroed dword so subsequent boots take the
+ *                 fast path. A freshly-erased chip reads 0xFF for every
+ *                 byte; a step-8 chip would have the low byte of its old
+ *                 max in addr 0 (likely 0..255 but never 0xA5 unless the
+ *                 player coincidentally hit a multiple of 256 + 165).
+ *                 Either way -- treat as fresh.
+ *   2. Sanity-clamp max_score to SCORE_MAX in case of partial corruption.
+ *
+ * Game-over path: if score > max_score, update RAM first (so a brown-out
+ * during EEPROM write doesn't leave RAM stale), then eeprom_update_dword
+ * which writes byte-by-byte and skips unchanged bytes. ~13 ms worst case
+ * for 4 bytes; the CPU halts during each byte write but gameplay is
+ * already frozen behind the GAME OVER overlay so it's invisible.
+ *
+ * EEPROM wear: ~100k writes per cell, gated to "only on a new max",
+ * effectively unreachable in normal play.
  *
  * `EEMEM` is an avr-gcc attribute that places the variable in the .eeprom
  * section -- compiled to a separate .eep file by the Makefile and burned
- * with `avrdude -U eeprom:w:...`. The variable's *flash* footprint is 0
- * because EEPROM lives in a different memory.                            */
-static uint16_t EEMEM ee_max_score = 0;
+ * with `avrdude -U eeprom:w:...`. Flash footprint: 0 B (different memory).
+ *
+ * NOTE: declaration ORDER fixes EEPROM ADDRESSES. Do not reorder these or
+ * existing chips will misread their saved data.                          */
+#define EEPROM_VERSION       0xA5u
+
+static uint8_t  EEMEM ee_version   = 0xFFu;   /* default = uninit on a fresh chip */
+static uint32_t EEMEM ee_max_score = 0;
+
+/* ---- NES gravity table -------------------------------------------------- *
+ * Frames-per-cell at 60 fps, converted to ms (frames * 1000/60, rounded
+ * to nearest integer), indexed by level (0..29). Level 29 is the "kill
+ * screen" -- 1 frame/cell ~= 17 ms; clamp any higher level to it.
+ *
+ * The big drops in the first 10 levels are intentional NES design --
+ * each level shaves a few frames so the player notices the speed-up.
+ * After level 10 the table plateaus in 3-level chunks until 19, then
+ * single-frame steps from there.
+ *
+ * 60 bytes in flash; the table is small enough that a switch statement
+ * would actually generate more code.                                    */
+static const uint16_t GRAVITY_TABLE[30] = {
+    800, 717, 633, 550, 467, 383, 300, 217, 133, 100,  /* 0-9  */
+     83,  83,  83,                                      /* 10-12 */
+     67,  67,  67,                                      /* 13-15 */
+     50,  50,  50,                                      /* 16-18 */
+     33,  33,  33,  33,  33,  33,  33,  33,  33,  33,   /* 19-28 */
+     17                                                 /* 29+ (clamp) */
+};
+
+/* NES base points per clear-type, multiplied by (level + 1) at runtime.
+ * Index by `cleared` (the number of lines that just cleared, 1..4).
+ * Index 0 is a no-op so callers can pass 0 without a branch. */
+static const uint16_t NES_BASE_POINTS[5] = { 0, 40, 100, 300, 1200 };
+
+/* Maxima for the 6-digit score field and the 30-entry gravity table.
+ * Score cap is reached at very high play; level cap is the NES kill
+ * screen and is the index used to clamp GRAVITY_TABLE lookups.        */
+#define SCORE_MAX_PTS   999999uL
+#define LEVEL_MAX        29u
 
 /* ---- tunable knobs ------------------------------------------------------- *
  * Rendering geometry (BLOCK_PIXELS, BOARD_OFFSET_*, palette) moved to
  * tet_render/. main.c only holds game-loop tuning now.
+ *
+ * Step 9 replaced the fixed GRAVITY_MS with a per-level lookup
+ * (GRAVITY_TABLE above). The live value sits in `current_gravity_ms`,
+ * refreshed whenever `level` changes after a line clear.
  * --------------------------------------------------------------------------*/
-#define GRAVITY_MS      1000U
 #define HARD_DROP_MS    62U      /* matches downward_ghost_speed in C++ ref  */
 
 /* Animation tick rates. With BOARD_W=10, the width sweep takes 5 ticks
@@ -48,10 +103,6 @@ static uint16_t EEMEM ee_max_score = 0;
  * = ~750 ms total clear animation, which feels right for arcade Tetris. */
 #define WIDTH_TICK_MS   30U
 #define HEIGHT_TICK_MS  30U
-
-/* Score cap matches the 3-digit HUD field. Score is a running total of
- * lines cleared, ported verbatim from testing_main.cpp:418-420. */
-#define SCORE_MAX       999U
 
 /* ---- spawn / queue ------------------------------------------------------- *
  * Step 6 phase 2 introduces a 1-deep queue so the right-margin preview can
@@ -308,12 +359,12 @@ static void anim_tick(struct st7735 *lcd, Board *b, AnimState *a, uint16_t now) 
  * panel doesn't briefly mask the MAX repaint (they don't overlap, but
  * keeping a strict left-to-right order makes the visual chain easy to
  * reason about).                                                          */
-static void enter_game_over(struct st7735 *lcd, uint16_t score,
-                            uint16_t *max_score, uint8_t *game_over,
+static void enter_game_over(struct st7735 *lcd, uint32_t score,
+                            uint32_t *max_score, uint8_t *game_over,
                             uint8_t *go_selection) {
     if (score > *max_score) {
         *max_score = score;
-        eeprom_update_word(&ee_max_score, *max_score);
+        eeprom_update_dword(&ee_max_score, *max_score);
         render_hud_max_score(lcd, *max_score);
     }
     *game_over    = 1;
@@ -324,20 +375,26 @@ static void enter_game_over(struct st7735 *lcd, uint16_t score,
 
 static void reset_game(struct st7735 *lcd, Board *board, Shape *active,
                        uint8_t *color_idx, uint8_t *next_kind,
-                       uint16_t *score, AnimState *anim,
+                       uint32_t *score, uint16_t *lines, uint8_t *level,
+                       uint16_t *current_gravity_ms,
+                       AnimState *anim,
                        uint8_t *in_hard_drop, uint16_t *prev_ms,
-                       uint16_t max_score) {
+                       uint32_t max_score) {
     ST7735_ClearScreen(lcd, BLACK);
     draw_board_frame(lcd);
 
     board_init(board);
-    *score        = 0;
-    *in_hard_drop = 0;
-    *anim         = (AnimState){0};
+    *score              = 0;
+    *lines              = 0;
+    *level              = 0;
+    *current_gravity_ms = GRAVITY_TABLE[0];
+    *in_hard_drop       = 0;
+    *anim               = (AnimState){0};
 
     render_hud_labels(lcd);
     render_hud_score(lcd, *score);
     render_hud_max_score(lcd, max_score);
+    render_hud_level(lcd, *level);
 
     *next_kind = roll_kind();
     (void)promote_and_queue(lcd, active, color_idx, next_kind, board);
@@ -372,19 +429,35 @@ int main(void) {
     uint8_t   in_hard_drop = 0;     /* 1 = fast-falling; inputs locked    */
     AnimState anim = {0};           /* phase=0 (idle); other fields seeded
                                        by anim_start when a clear begins  */
-    uint16_t  score = 0;            /* running total of lines cleared     */
+    /* NES-style scoring + leveling state (step 9). Three pieces:
+     *   - `score`  : NES points, capped at SCORE_MAX_PTS (999,999).
+     *   - `lines`  : total rows cleared this game; drives `level`.
+     *   - `level`  : floor(lines / 10), clamped to LEVEL_MAX (29).
+     * `current_gravity_ms` is the live ms-per-cell, recomputed from
+     * GRAVITY_TABLE whenever `level` ticks up. */
+    uint32_t  score              = 0;
+    uint16_t  lines              = 0;
+    uint8_t   level              = 0;
+    uint16_t  current_gravity_ms = GRAVITY_TABLE[0];
+
     uint8_t   next_kind = 0;        /* queued piece kind; rolled on entry
                                        into gameplay, promoted on each spawn */
     uint8_t   game_over    = 0;     /* 1 when GAME OVER overlay is showing */
     uint8_t   go_selection = GAME_OVER_SEL_YES;   /* cursor on the overlay */
 
-    /* Persistent max score. Read once at boot. 0xFFFF is the value an
-     * un-touched EEPROM cell returns on a freshly-flashed chip; treat
-     * that as "no max yet" -> display 000. Any value below the cap is
-     * trusted as-is. */
-    uint16_t  max_score = eeprom_read_word(&ee_max_score);
-    if (max_score == 0xFFFFu) max_score = 0;
-    if (max_score > SCORE_MAX) max_score = SCORE_MAX;
+    /* Persistent max score, with format versioning. See the EEPROM
+     * comment block at the top for the layout. Old (step-8) chips don't
+     * have the sentinel byte, so the mismatch path runs once after the
+     * upgrade and zeros everything out -- a one-time MAX loss for any
+     * player who had a saved high score on the old layout. */
+    uint32_t  max_score = 0;
+    if (eeprom_read_byte(&ee_version) == EEPROM_VERSION) {
+        max_score = eeprom_read_dword(&ee_max_score);
+        if (max_score > SCORE_MAX_PTS) max_score = SCORE_MAX_PTS;
+    } else {
+        eeprom_update_byte(&ee_version, EEPROM_VERSION);
+        eeprom_update_dword(&ee_max_score, 0);
+    }
 
     board_init(&board);
 
@@ -419,7 +492,8 @@ int main(void) {
      * HUD, and spawns the first piece). */
     uint16_t prev_ms;
     reset_game(&lcd, &board, &active, &active_color_idx, &next_kind,
-               &score, &anim, &in_hard_drop, &prev_ms, max_score);
+               &score, &lines, &level, &current_gravity_ms,
+               &anim, &in_hard_drop, &prev_ms, max_score);
 
     while (1) {
         uint16_t now = timer_now_ms();
@@ -461,8 +535,9 @@ int main(void) {
                     game_over    = 0;
                     go_selection = GAME_OVER_SEL_YES;
                     reset_game(&lcd, &board, &active, &active_color_idx,
-                               &next_kind, &score, &anim, &in_hard_drop,
-                               &prev_ms, max_score);
+                               &next_kind, &score, &lines, &level,
+                               &current_gravity_ms,
+                               &anim, &in_hard_drop, &prev_ms, max_score);
                 } else {
                     /* NO + DOWN -- "switch off" simulation. Paint the
                      * whole screen WHITE then break out of the main loop.
@@ -502,17 +577,44 @@ int main(void) {
             uint8_t cleared = board.total_lines;
             anim_tick(&lcd, &board, &anim, now);
             if (anim.phase == 0) {
-                /* Animation done: apply scoring rule from
-                 * testing_main.cpp:418-420 (score += total_lines), then
-                 * saturate at SCORE_MAX so the 3-digit HUD stays in range. */
-                uint16_t new_score = (uint16_t)(score + cleared);
-                if (new_score > SCORE_MAX || new_score < score) {
-                    new_score = SCORE_MAX;        /* overflow guard too */
+                /* Animation done. Three updates in order:
+                 *   1. NES score: base[cleared] * (level + 1), added to
+                 *      the running total, saturating at SCORE_MAX_PTS
+                 *      so the 6-digit HUD stays in range. `level` is
+                 *      the PRE-clear level -- NES awards the multiplier
+                 *      for the level you cleared the lines AT, not the
+                 *      level you ended up at after the clear.
+                 *   2. Line counter: pure running total. Drives level.
+                 *   3. Level: floor(lines / 10), clamped to LEVEL_MAX
+                 *      (the kill screen). On a level-up we refresh
+                 *      `current_gravity_ms` so the next gravity tick
+                 *      uses the new speed. */
+                if (cleared > 0 && cleared <= 4) {
+                    uint32_t add = (uint32_t)NES_BASE_POINTS[cleared] *
+                                   (uint32_t)(level + 1u);
+                    uint32_t new_score = score + add;
+                    if (new_score > SCORE_MAX_PTS || new_score < score) {
+                        new_score = SCORE_MAX_PTS;  /* overflow guard too */
+                    }
+                    if (new_score != score) {
+                        score = new_score;
+                        render_hud_score(&lcd, score);
+                    }
                 }
-                if (new_score != score) {
-                    score = new_score;
-                    render_hud_score(&lcd, score);
+
+                uint16_t new_lines = (uint16_t)(lines + cleared);
+                if (new_lines < lines) new_lines = 0xFFFFu;  /* overflow guard */
+                lines = new_lines;
+
+                uint8_t new_level = (lines >= 10u * LEVEL_MAX)
+                                  ? (uint8_t)LEVEL_MAX
+                                  : (uint8_t)(lines / 10u);
+                if (new_level != level) {
+                    level              = new_level;
+                    current_gravity_ms = GRAVITY_TABLE[level];
+                    render_hud_level(&lcd, level);
                 }
+
                 if (promote_and_queue(&lcd, &active, &active_color_idx,
                                       &next_kind, &board)) {
                     /* Spawn collided with the stack -- step 7 trigger. */
@@ -564,11 +666,25 @@ int main(void) {
             }
         }
 
-        /* ---- gravity: GRAVITY_MS normally, HARD_DROP_MS while fast-falling. *
-         * Collision is now board-aware (board_collides catches both the floor
-         * and any latched cell underneath). When the piece can't fall further
-         * we latch it into the board and spawn the next one. */
-        uint16_t step_ms = in_hard_drop ? HARD_DROP_MS : GRAVITY_MS;
+        /* ---- gravity --------------------------------------------------- *
+         * Normal fall  : current_gravity_ms (NES table, lookup by level).
+         * Hard drop    : min(HARD_DROP_MS, current_gravity_ms).
+         *
+         * The `min` exists because HARD_DROP_MS = 62 was tuned against a
+         * fixed 1 s gravity. With NES levels, natural gravity overtakes
+         * the hard-drop step at ~level 13 -- past that, pressing DOWN
+         * would actually slow the piece down. Taking the smaller of the
+         * two means hard-drop is "at least as fast as gravity" forever,
+         * with zero penalty at low levels (current_gravity_ms is way
+         * bigger than HARD_DROP_MS there). One ternary, two bytes of
+         * flash.
+         *
+         * Collision check is board-aware (board_collides catches both
+         * the floor and any latched cell underneath). When the piece
+         * can't fall further we latch it into the board and spawn the
+         * next one. */
+        uint16_t step_ms = current_gravity_ms;
+        if (in_hard_drop && HARD_DROP_MS < step_ms) step_ms = HARD_DROP_MS;
         if ((uint16_t)(now - prev_ms) >= step_ms) {
             prev_ms = now;
 
