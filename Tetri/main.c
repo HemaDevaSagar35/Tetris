@@ -1,4 +1,5 @@
 #include "main.h"
+#include <avr/eeprom.h>
 #include "st7735.h"
 #include "timer.h"
 #include "buttons.h"
@@ -8,7 +9,31 @@
 #include "rng.h"
 #include "render.h"      /* render_shape, paint_cell, draw_board_frame,
                             BLOCK_PIXELS, BOARD_OFFSET_*                  */
-#include "hud.h"         /* render_hud_score                              */
+#include "hud.h"         /* render_hud_score, _max_score, _labels,
+                            _start_overlay, game-over overlay helpers     */
+
+/* ---- persistent max score (EEPROM) -------------------------------------- *
+ * Single uint16_t stored in EEPROM byte address 0..1 (the linker assigns
+ * `EEMEM` variables in declaration order; this is the only one we use).
+ *
+ * Lifecycle:
+ *   - Boot: eeprom_read_word() -> max_score. A freshly-flashed chip reads
+ *     0xFFFF for un-touched bytes; we treat that as "no max yet" and
+ *     display 000. The HEX flasher can also explicitly zero the EEPROM
+ *     section, but we don't depend on that.
+ *   - Game-over: if score > max_score, update RAM copy + eeprom_update_word()
+ *     (which skips the write when bytes are already correct, so no
+ *     unnecessary wear). EEPROM is rated ~100k writes; a serious player
+ *     setting a new high score every minute would still take ~70 days
+ *     of continuous play to wear out the cell.
+ *   - Reset (YES + DOWN): max_score in RAM is intentionally NOT cleared.
+ *     The only way to clear is to reflash with -e (chip erase).
+ *
+ * `EEMEM` is an avr-gcc attribute that places the variable in the .eeprom
+ * section -- compiled to a separate .eep file by the Makefile and burned
+ * with `avrdude -U eeprom:w:...`. The variable's *flash* footprint is 0
+ * because EEPROM lives in a different memory.                            */
+static uint16_t EEMEM ee_max_score = 0;
 
 /* ---- tunable knobs ------------------------------------------------------- *
  * Rendering geometry (BLOCK_PIXELS, BOARD_OFFSET_*, palette) moved to
@@ -230,8 +255,9 @@ static void anim_tick(struct st7735 *lcd, Board *b, AnimState *a, uint16_t now) 
 }
 
 /* ---- reset --------------------------------------------------------------- *
- * Tear everything back to the boot state, then re-do the boot-time spawn.
- * Called from the game-over branch when the player picks YES + DOWN.
+ * Tear everything back to a clean playable state. Called from two places:
+ *   - First entry into gameplay (DOWN press on the start screen).
+ *   - YES + DOWN on the game-over overlay.
  *
  * Order matters:
  *   1. Clear screen + redraw frame BEFORE any HUD calls -- ST7735_ClearScreen
@@ -240,21 +266,67 @@ static void anim_tick(struct st7735 *lcd, Board *b, AnimState *a, uint16_t now) 
  *   2. board_init zeros cells + bookkeeping + sets height_peak sentinel.
  *   3. Zero score / hard-drop / anim. anim = {0} sets phase = 0 so the
  *      anim short-circuit doesn't fire on the next iteration.
- *   4. HUD paints: score (0) and -- via promote_and_queue -- preview.
+ *   4. HUD paints, in order: labels ("SCR" / "MAX"), current score (0),
+ *      max score (whatever the player has on this chip). Labels and max
+ *      score are static for the lifetime of one game -- they're painted
+ *      here once and never touched until the next reset.
  *   5. promote_and_queue: roll a kind, queue another, paint active + preview.
  *      Can't game-over here (board just got cleared), so we ignore the
  *      return value with (void).
  *   6. Reset prev_ms so gravity doesn't fire immediately on the next loop.
+ *
+ * `max_score` is read-only here: the caller (main) owns the RAM copy and
+ * updates it on game-over before calling reset. We pass by value, not
+ * pointer, to make that contract clear at the call site.
  *
  * The RNG state intentionally is NOT re-seeded: each spawn has already
  * advanced the xorshift8 stream, so we get fresh-looking pieces from
  * wherever the stream happened to be when the game ended. Re-seeding from
  * ADC would also be fine but is unnecessary churn.
  * --------------------------------------------------------------------------*/
+/* ---- game-over entry helper --------------------------------------------- *
+ * Two call sites (after-clear and after-lock-no-clear) need the exact same
+ * sequence: maybe promote new max -> paint overlay -> paint cursor. Folded
+ * here so the two sites can't diverge.
+ *
+ * Max-score update sequence (only when score beat the previous max):
+ *   1. Bump RAM copy first -- if a power glitch interrupts the EEPROM
+ *      write below, the RAM copy still reflects the in-game state for
+ *      the (vanishingly unlikely) case the player keeps playing. The
+ *      next clean game-over will retry the EEPROM write.
+ *   2. eeprom_update_word: writes byte-by-byte, skipping unchanged bytes.
+ *      A first-ever max takes ~7 ms (2 bytes * ~3.3 ms each); a same-value
+ *      "write" is essentially free. The CPU is halted by the EEPROM
+ *      hardware during the write, so timing-sensitive code is gated
+ *      anyway -- and game-over freezes gameplay, so the halt is invisible.
+ *   3. render_hud_max_score: repaints the MAX digits while the game-over
+ *      overlay is up. The overlay covers the playfield, not the left
+ *      margin, so the new max paints in real time -- the player sees
+ *      their new record celebrated.
+ *
+ * Order matters: paint the new MAX before the overlay so the overlay's
+ * panel doesn't briefly mask the MAX repaint (they don't overlap, but
+ * keeping a strict left-to-right order makes the visual chain easy to
+ * reason about).                                                          */
+static void enter_game_over(struct st7735 *lcd, uint16_t score,
+                            uint16_t *max_score, uint8_t *game_over,
+                            uint8_t *go_selection) {
+    if (score > *max_score) {
+        *max_score = score;
+        eeprom_update_word(&ee_max_score, *max_score);
+        render_hud_max_score(lcd, *max_score);
+    }
+    *game_over    = 1;
+    *go_selection = GAME_OVER_SEL_YES;
+    render_game_over_overlay(lcd);
+    render_game_over_selection(lcd, *go_selection);
+}
+
 static void reset_game(struct st7735 *lcd, Board *board, Shape *active,
                        uint8_t *color_idx, uint8_t *next_kind,
                        uint16_t *score, AnimState *anim,
-                       uint8_t *in_hard_drop, uint16_t *prev_ms) {
+                       uint8_t *in_hard_drop, uint16_t *prev_ms,
+                       uint16_t max_score) {
     ST7735_ClearScreen(lcd, BLACK);
     draw_board_frame(lcd);
 
@@ -263,7 +335,10 @@ static void reset_game(struct st7735 *lcd, Board *board, Shape *active,
     *in_hard_drop = 0;
     *anim         = (AnimState){0};
 
+    render_hud_labels(lcd);
     render_hud_score(lcd, *score);
+    render_hud_max_score(lcd, max_score);
+
     *next_kind = roll_kind();
     (void)promote_and_queue(lcd, active, color_idx, next_kind, board);
 
@@ -280,7 +355,9 @@ int main(void) {
 
     ST7735_Init(&lcd);
     ST7735_ClearScreen(&lcd, BLACK);
-    draw_board_frame(&lcd);
+    /* Frame is part of the gameplay screen; we draw it AFTER the start
+     * overlay is dismissed (reset_game redraws it). The start screen sits
+     * on a black background with no frame -- a cleaner splash look. */
 
     timer_init_1ms();
     buttons_init();
@@ -296,23 +373,53 @@ int main(void) {
     AnimState anim = {0};           /* phase=0 (idle); other fields seeded
                                        by anim_start when a clear begins  */
     uint16_t  score = 0;            /* running total of lines cleared     */
-    uint8_t   next_kind;            /* queued piece kind; rolled at boot,
-                                       promoted on every spawn            */
+    uint8_t   next_kind = 0;        /* queued piece kind; rolled on entry
+                                       into gameplay, promoted on each spawn */
     uint8_t   game_over    = 0;     /* 1 when GAME OVER overlay is showing */
     uint8_t   go_selection = GAME_OVER_SEL_YES;   /* cursor on the overlay */
 
-    board_init(&board);
-    /* Boot: roll the very first queued kind, then promote it immediately.
-     * After this call, `next_kind` holds the kind shown in the preview
-     * (the one the player will get on the NEXT spawn). The board is empty
-     * here so the spawn collision check inside promote_and_queue cannot
-     * fire -- safe to ignore the return value. */
-    next_kind = roll_kind();
-    (void)promote_and_queue(&lcd, &active, &active_color_idx, &next_kind,
-                            &board);
-    render_hud_score(&lcd, score);
+    /* Persistent max score. Read once at boot. 0xFFFF is the value an
+     * un-touched EEPROM cell returns on a freshly-flashed chip; treat
+     * that as "no max yet" -> display 000. Any value below the cap is
+     * trusted as-is. */
+    uint16_t  max_score = eeprom_read_word(&ee_max_score);
+    if (max_score == 0xFFFFu) max_score = 0;
+    if (max_score > SCORE_MAX) max_score = SCORE_MAX;
 
-    uint16_t prev_ms = timer_now_ms();
+    board_init(&board);
+
+    /* ---- start screen -------------------------------------------------- *
+     * Paint the splash + [PLAY] panel and spin until the player hits DOWN.
+     * No gameplay state has been spawned yet; the board is initialised but
+     * not painted. Buttons are already armed (buttons_init() above) so
+     * the debounced edge-detector works here too.
+     *
+     * Why a spin loop instead of folding the start branch into the main
+     * while(1)? Two reasons:
+     *   1. Symmetry: gameplay assumes promote_and_queue has been called
+     *      so `active` is a valid Shape. Letting the main loop see an
+     *      un-initialised `active` would need extra guards everywhere.
+     *   2. Cost: gameplay's loop spends most of its time in the gravity
+     *      timer check; on the start screen there's nothing else to do,
+     *      so a plain spin is simplest and uses zero ROM. */
+    render_start_overlay(&lcd);
+    while (!button_down_just_pressed()) {
+        /* Drain other button edges so they don't carry into the game.
+         * `*_just_pressed()` returns the latched press flag and clears
+         * it, so calling them here pre-clears any spurious press the
+         * player might have done during boot. */
+        (void)button_left_just_pressed();
+        (void)button_right_just_pressed();
+        (void)button_rotate_cw_just_pressed();
+        (void)button_rotate_ccw_just_pressed();
+    }
+
+    /* DOWN was just consumed by the loop condition. Flip into gameplay
+     * via reset_game (which clears the start overlay, paints the frame,
+     * HUD, and spawns the first piece). */
+    uint16_t prev_ms;
+    reset_game(&lcd, &board, &active, &active_color_idx, &next_kind,
+               &score, &anim, &in_hard_drop, &prev_ms, max_score);
 
     while (1) {
         uint16_t now = timer_now_ms();
@@ -355,7 +462,7 @@ int main(void) {
                     go_selection = GAME_OVER_SEL_YES;
                     reset_game(&lcd, &board, &active, &active_color_idx,
                                &next_kind, &score, &anim, &in_hard_drop,
-                               &prev_ms);
+                               &prev_ms, max_score);
                 } else {
                     /* NO + DOWN -- "switch off" simulation. Paint the
                      * whole screen WHITE then break out of the main loop.
@@ -409,10 +516,8 @@ int main(void) {
                 if (promote_and_queue(&lcd, &active, &active_color_idx,
                                       &next_kind, &board)) {
                     /* Spawn collided with the stack -- step 7 trigger. */
-                    game_over    = 1;
-                    go_selection = GAME_OVER_SEL_YES;
-                    render_game_over_overlay(&lcd);
-                    render_game_over_selection(&lcd, go_selection);
+                    enter_game_over(&lcd, score, &max_score, &game_over,
+                                    &go_selection);
                 }
                 prev_ms = now;
             }
@@ -491,10 +596,8 @@ int main(void) {
                     if (promote_and_queue(&lcd, &active, &active_color_idx,
                                           &next_kind, &board)) {
                         /* Spawn collided with the stack -- step 7 trigger. */
-                        game_over    = 1;
-                        go_selection = GAME_OVER_SEL_YES;
-                        render_game_over_overlay(&lcd);
-                        render_game_over_selection(&lcd, go_selection);
+                        enter_game_over(&lcd, score, &max_score, &game_over,
+                                        &go_selection);
                     }
                 }
             }

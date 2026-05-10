@@ -7,27 +7,43 @@
 /* ---- HUD layout --------------------------------------------------------- *
  * The playfield is centered in a 130 px screen with ~25 px on each side.
  *
- *   LEFT  margin (x = 0 .. 24): score readout.
+ *   LEFT  margin (x = 0 .. 24): score readout (current + max).
  *   RIGHT margin (x = 105 .. 129): next-piece preview (added in Phase 2).
  *
- * Score:
- *   Three digits, leading zeros, capped at 999 (saturating).
- *   Each digit is a 3-col x 5-row bitmap (the same bitmap as
- *   testing_main.cpp ScoreBoard::DIGITS), pixel-doubled to 6 x 10 LCD
- *   pixels for legibility. Inter-digit gap = 1 px.
- *   Layout: origin (SCORE_X, SCORE_Y) = (2, 4). Total footprint:
- *     width  = 3 * 6 + 2 * 1 = 20 px (fits within 25 px left margin)
- *     height = 5 * 2         = 10 px
+ * Left HUD stack (top -> bottom):
  *
- * Update rule: ports testing_main.cpp:418-420 verbatim --
- *   score = score + board.total_lines
- * fired when the line-clear animation finishes. Score is saturated at
- * 999 to keep the display three digits.
+ *      y=  4..11   "SCR"    X1 label (5x8 font, 17 px wide)
+ *      y= 14..23    digits  current score, 3 digits, pixel-doubled to 6x10
+ *      y= 27..34   "MAX"    X1 label
+ *      y= 37..46    digits  max score, same style as current
  *
- * Render cost: each call redraws all 3 digits as 15 fat-pixel rectangles
- * (3*5 cells per digit). At ~150 us per rectangle on a 4 MHz SPI, ~7 ms
- * total. Only fires when a line clears, so it's not in the hot path. */
+ * Score digits use the same 3-col x 5-row bitmap as `testing_main.cpp`
+ * `ScoreBoard::DIGITS`, pixel-doubled to 6 x 10 LCD pixels for legibility.
+ * Inter-digit gap = 1 px. Both score blocks share the same x-origin
+ * (HUD_LEFT_X) so they line up visually.
+ *
+ * Update rules:
+ *   - Current score: ports testing_main.cpp:418-420 verbatim --
+ *       score = score + board.total_lines
+ *     fired when the line-clear animation finishes. Saturates at 999.
+ *   - Max score: persisted to EEPROM. Read once at boot, only re-written
+ *     at game-over when the current run beat the previous max. Player
+ *     sees the new max paint to the HUD WHILE the GAME OVER overlay is
+ *     up (the overlay is on the playfield; the left margin stays clear).
+ *
+ * Render cost per score: 15 fat-pixel rectangles (3*5 cells per digit) *
+ * 3 digits at ~150 us per rectangle on a 4 MHz SPI = ~7 ms total. Labels
+ * are drawn once per game (in reset_game), not per score change.        */
+
+#define HUD_LEFT_X        2
+#define HUD_SCR_LABEL_Y   4
+#define HUD_SCORE_DIG_Y   14
+#define HUD_MAX_LABEL_Y   27
+#define HUD_MAX_DIG_Y     37
+
+void render_hud_labels(struct st7735 *lcd);
 void render_hud_score(struct st7735 *lcd, uint16_t score);
+void render_hud_max_score(struct st7735 *lcd, uint16_t max_score);
 
 /* Next-piece preview (Step 6 phase 2):
  *   - 4 x 4 cell grid (NEXT_BOX_CELLS = 4); fits the widest piece (I = 4
@@ -91,5 +107,15 @@ void render_hud_next(struct st7735 *lcd, uint8_t kind);
 
 void render_game_over_overlay(struct st7735 *lcd);
 void render_game_over_selection(struct st7735 *lcd, uint8_t selection);
+
+/* Start-screen overlay (boot):
+ *   Same 76 x 45 px panel as game-over (visual consistency). Two lines:
+ *       "TETRIS"   in X2 (5x16 font, splash feel), 35 px wide
+ *       "[PLAY]"   in X1 (5x8 font), 35 px wide -- brackets read as button
+ *
+ *   Drawn once at boot before any game state is initialised. The main
+ *   loop's start-screen short-circuit (game_started == 0) waits for a
+ *   DOWN press and then calls reset_game() to flip into gameplay. */
+void render_start_overlay(struct st7735 *lcd);
 
 #endif

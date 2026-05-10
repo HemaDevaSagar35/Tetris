@@ -5,9 +5,10 @@
                             SHAPE_BLOCKS, shape_get_boundary, shape_get_blocks */
 #include "render.h"      /* BOARD_OFFSET_X, BOARD_PX_W, BOARD_PX_H        */
 
-/* ---- score layout constants --------------------------------------------- */
-#define SCORE_X        2     /* origin x in the left margin (1 px from edge) */
-#define SCORE_Y        4     /* origin y from screen top                     */
+/* ---- score layout constants --------------------------------------------- *
+ * Public x/y origins live in hud.h (HUD_LEFT_X, HUD_SCORE_DIG_Y,
+ * HUD_MAX_DIG_Y, HUD_SCR_LABEL_Y, HUD_MAX_LABEL_Y). The pixel-scale
+ * tuning stays private here.                                              */
 #define SCORE_PX       2     /* pixel-doubling scale for the 3x5 bitmap      */
 #define SCORE_GAP_PX   1     /* inter-digit gap in screen pixels             */
 #define SCORE_DIGITS   3     /* 3 digits -> caps at 999                      */
@@ -53,20 +54,42 @@ static void draw_digit(struct st7735 *lcd, uint8_t digit,
     }
 }
 
-void render_hud_score(struct st7735 *lcd, uint16_t score) {
-    if (score > 999) score = 999;        /* saturate -- 3-digit field */
+/* Shared 3-digit painter. Caller picks the y-origin so the same routine
+ * serves both the current score and the max score (they share the x-origin
+ * HUD_LEFT_X to stay visually column-aligned). Values > 999 saturate.    */
+static void draw_3digits(struct st7735 *lcd, uint16_t value, uint8_t origin_y) {
+    if (value > 999) value = 999;
 
     uint8_t digits[SCORE_DIGITS];
-    digits[0] = (uint8_t)(score / 100);
-    digits[1] = (uint8_t)((score / 10) % 10);
-    digits[2] = (uint8_t)(score % 10);
+    digits[0] = (uint8_t)(value / 100);
+    digits[1] = (uint8_t)((value / 10) % 10);
+    digits[2] = (uint8_t)(value % 10);
 
-    uint8_t cursor_x  = SCORE_X;
+    uint8_t cursor_x  = HUD_LEFT_X;
     uint8_t advance_x = (uint8_t)(3 * SCORE_PX + SCORE_GAP_PX);
     for (uint8_t i = 0; i < SCORE_DIGITS; i++) {
-        draw_digit(lcd, digits[i], cursor_x, SCORE_Y);
+        draw_digit(lcd, digits[i], cursor_x, origin_y);
         cursor_x = (uint8_t)(cursor_x + advance_x);
     }
+}
+
+void render_hud_labels(struct st7735 *lcd) {
+    /* "SCR" and "MAX" never change once painted; called once per game
+     * (in reset_game) and not on every score update. WHITE text on BLACK
+     * background -- BG was just cleared by ST7735_ClearScreen, so no
+     * separate erase is needed. */
+    ST7735_SetPosition(HUD_LEFT_X, HUD_SCR_LABEL_Y);
+    ST7735_DrawString(lcd, "SCR", WHITE, X1);
+    ST7735_SetPosition(HUD_LEFT_X, HUD_MAX_LABEL_Y);
+    ST7735_DrawString(lcd, "MAX", WHITE, X1);
+}
+
+void render_hud_score(struct st7735 *lcd, uint16_t score) {
+    draw_3digits(lcd, score, HUD_SCORE_DIG_Y);
+}
+
+void render_hud_max_score(struct st7735 *lcd, uint16_t max_score) {
+    draw_3digits(lcd, max_score, HUD_MAX_DIG_Y);
 }
 
 /* ---- next-piece preview ------------------------------------------------- */
@@ -187,4 +210,41 @@ void render_game_over_selection(struct st7735 *lcd, uint8_t selection) {
                       (selection == GAME_OVER_SEL_YES) ? "[YES]  NO"
                                                       : "YES  [NO]",
                       BLACK, X1);
+}
+
+/* ---- start-screen overlay ---------------------------------------------- *
+ * Reuses the same 76 x 45 panel rectangle as game-over for visual
+ * consistency. Two lines, vertically centered:
+ *
+ *     "TETRIS"   X2 font -- 16 px tall, 6 px advance per char (X2 only
+ *                doubles HEIGHT, not width; see ST7735_DrawChar). So
+ *                "TETRIS" is 6 chars * 5 + 5 gaps = 35 px wide.
+ *
+ *     "[PLAY]"   X1 font -- 8 px tall, also 35 px wide for 6 chars.
+ *
+ * Both lines are the same width by happy coincidence, so they stack as
+ * a clean column centered in the panel. Y offsets from OVL_Y0 leave a
+ * 6 px top pad, 6 px between lines, 5 px bottom pad. */
+#define START_TITLE_Y_OFF   6     /* title -> uses y = 64..79  */
+#define START_PLAY_Y_OFF    28    /* button -> uses y = 86..93 */
+
+#define START_TITLE_W       35    /* X2 "TETRIS"  visible width */
+#define START_PLAY_W        35    /* X1 "[PLAY]"  visible width */
+
+void render_start_overlay(struct st7735 *lcd) {
+    /* WHITE panel. Reuses OVL_X0/Y0/Y1/W from the game-over overlay --
+     * the panel geometry is shared by design so the two screens look
+     * like the same dialog box. */
+    ST7735_DrawRectangle(lcd, OVL_X0, OVL_X1, OVL_Y0, OVL_Y1, WHITE);
+
+    /* Title: "TETRIS" X2, centered horizontally. */
+    uint8_t t_x = (uint8_t)(OVL_X0 + (OVL_W - START_TITLE_W) / 2);
+    ST7735_SetPosition(t_x, OVL_Y0 + START_TITLE_Y_OFF);
+    ST7735_DrawString(lcd, "TETRIS", BLACK, X2);
+
+    /* "[PLAY]" button, centered. The brackets are intentional -- they
+     * read as a button affordance even without colour cues. */
+    uint8_t p_x = (uint8_t)(OVL_X0 + (OVL_W - START_PLAY_W) / 2);
+    ST7735_SetPosition(p_x, OVL_Y0 + START_PLAY_Y_OFF);
+    ST7735_DrawString(lcd, "[PLAY]", BLACK, X1);
 }
