@@ -55,7 +55,39 @@ uint8_t board_collides(const Board *b, const Shape *s, int8_t dx, int8_t dy);
  * screen at this point, the board just takes ownership of them.
  *
  * Mirrors C++ `Board::latch_on` (shapes/utils.h:169-178) but defers
- * `line_formation()` to step 4 -- here we just write cells. */
+ * `line_formation()` to the caller -- the spawn / line-clear flow lives
+ * in main.c, not inside latch. */
 void board_latch(Board *b, const Shape *s, uint8_t color_idx);
+
+/* Walk every row; mark line_formed[y] = 1 if row y is full, 0 otherwise.
+ * Also writes lines_filled (1 if any) and total_lines (count).
+ *
+ * Call once after board_latch when you want to know if a line clear is due.
+ * Cheap: 200 cell reads max. Faithful port of C++ Board::line_formation()
+ * (shapes/utils.h:196-213). */
+void board_check_lines(Board *b);
+
+/* Instantly remove every row where line_formed[y] == 1 and pack the
+ * non-full rows down so they stack against the floor. Updates height_peak
+ * (new = old + total_lines, clamped). Does NOT touch line_formed[] /
+ * lines_filled / total_lines -- caller reads them for scoring, then calls
+ * board_reset_lines.
+ *
+ * Returns the number of cleared lines for convenience.
+ *
+ * Diverges from C++ Board::clear_lines (shapes/utils.h:216-236): that
+ * version copies source rows to destinations but never clears the sources,
+ * which double-stamps any piece that falls. The C++ avoids the bug by
+ * using the animated clear_lines_selectively path in production; we'd
+ * rather have a correct instant version. Two-pointer compaction: bottom-up
+ * read pointer, bottom-up write pointer, skip full rows on read, copy
+ * read->write on non-full, wipe everything above the final write index. */
+uint8_t board_clear_lines(Board *b);
+
+/* Zero line_formed[], lines_filled, total_lines. Call after consuming
+ * total_lines for scoring. Mirrors C++ Board::reset_lines_deltas
+ * (shapes/utils.h:286-290) -- minus deltas[], which only step 5
+ * (animation) populates. */
+void board_reset_lines(Board *b);
 
 #endif

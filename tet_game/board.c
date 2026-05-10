@@ -50,3 +50,56 @@ void board_latch(Board *b, const Shape *s, uint8_t color_idx) {
         if (y < b->height_peak) b->height_peak = y;
     }
 }
+
+void board_check_lines(Board *b) {
+    uint8_t total = 0;
+    for (uint8_t y = 0; y < BOARD_H; y++) {
+        uint8_t full = 1;
+        for (uint8_t x = 0; x < BOARD_W; x++) {
+            if (b->cells[y][x] == 0) { full = 0; break; }
+        }
+        b->line_formed[y] = full;
+        total = (uint8_t)(total + full);
+    }
+    b->total_lines  = total;
+    b->lines_filled = (total > 0) ? 1 : 0;
+}
+
+uint8_t board_clear_lines(Board *b) {
+    /* Two-pointer compaction. Walk read bottom-up. write follows behind
+     * but only advances when read kept a row. Full rows get skipped on
+     * read, so write lags by exactly total_lines after the loop. Then
+     * wipe everything above write (those rows are now "above the stack"
+     * after the collapse). */
+    int8_t write = (int8_t)(BOARD_H - 1);
+    for (int8_t read = (int8_t)(BOARD_H - 1); read >= 0; read--) {
+        if (b->line_formed[read]) continue;
+        if (read != write) {
+            for (uint8_t x = 0; x < BOARD_W; x++) {
+                b->cells[write][x] = b->cells[read][x];
+            }
+        }
+        write--;
+    }
+    for (int8_t y = write; y >= 0; y--) {
+        for (uint8_t x = 0; x < BOARD_W; x++) {
+            b->cells[y][x] = 0;
+        }
+    }
+
+    /* Stack height drops by exactly total_lines: every cleared row had
+     * y >= old height_peak (a full row must contain a cell, so its y is
+     * at or below the highest occupied row), so the top of the stack
+     * descends by the count of cleared rows. Clamp at BOARD_H = "empty". */
+    int16_t new_peak = (int16_t)b->height_peak + (int16_t)b->total_lines;
+    if (new_peak > (int16_t)BOARD_H) new_peak = (int16_t)BOARD_H;
+    b->height_peak = (int8_t)new_peak;
+
+    return b->total_lines;
+}
+
+void board_reset_lines(Board *b) {
+    for (uint8_t y = 0; y < BOARD_H; y++) b->line_formed[y] = 0;
+    b->lines_filled = 0;
+    b->total_lines  = 0;
+}

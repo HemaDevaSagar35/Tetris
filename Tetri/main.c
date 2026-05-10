@@ -59,6 +59,36 @@ static void render_shape(struct st7735 *lcd, const Shape *s, uint8_t color_idx) 
     }
 }
 
+/* ---- board repaint (dirty range) ---------------------------------------- *
+ * Paints every cell in rows [top_y, BOARD_H-1] to its current colour --
+ * BG (palette[0]) for empties, palette[idx] for stack cells. NO big erase
+ * first: each cell transitions directly old-colour -> new-colour, which
+ * eliminates the "flash to black" flicker the full-playfield erase
+ * created. Empty cells get an unnecessary BG repaint, but that's ~14 ms
+ * of SPI vs the ~50 ms erase it replaces -- a net win.
+ *
+ * top_y is the row above which nothing could have changed. Caller passes
+ * the pre-clear `height_peak`: rows above the old stack top were empty
+ * before, are still empty after, no repaint needed. For a stack 5 rows
+ * tall (peak at y=15), this paints 5*10 = 50 cells instead of 200.
+ *
+ * Moves to tet_render/ alongside render_shape in step 6.
+ * --------------------------------------------------------------------------*/
+static void render_board(struct st7735 *lcd, const Board *b, int8_t top_y) {
+    if (top_y < 0)              top_y = 0;
+    if (top_y >= (int8_t)BOARD_H) return;
+
+    for (uint8_t y = (uint8_t)top_y; y < BOARD_H; y++) {
+        for (uint8_t x = 0; x < BOARD_W; x++) {
+            uint16_t rgb = palette[b->cells[y][x]];
+            uint8_t xs = (uint8_t)(BOARD_OFFSET_X + x * BLOCK_PIXELS);
+            uint8_t ys = (uint8_t)(BOARD_OFFSET_Y + y * BLOCK_PIXELS);
+            ST7735_DrawRectangle(lcd, xs, xs + BLOCK_PIXELS - 1,
+                                      ys, ys + BLOCK_PIXELS - 1, rgb);
+        }
+    }
+}
+
 /* ---- playfield frame ---------------------------------------------------- *
  * Draw a 1-px white "U" border around the playfield (left + right + bottom).
  * The top is intentionally open so pieces visibly enter from above.
@@ -200,6 +230,20 @@ int main(void) {
                  * an occupied cell) is deferred to step 7. */
                 board_latch(&board, &active, active_color_idx);
                 in_hard_drop = 0;
+
+                /* Line clear (instant -- step 4). Animation is step 5.
+                 * Score wiring is step 6 (HUD); for now the cleared count
+                 * is observed only via the visual collapse. We snapshot
+                 * the pre-clear height_peak as the dirty-region top --
+                 * rows above the old stack top can't have changed, so
+                 * skipping them saves a chunk of SPI per clear. */
+                board_check_lines(&board);
+                if (board.lines_filled) {
+                    int8_t dirty_top = board.height_peak;
+                    board_clear_lines(&board);
+                    board_reset_lines(&board);
+                    render_board(&lcd, &board, dirty_top);
+                }
 
                 spawn_next(&active, &active_color_idx);
                 render_shape(&lcd, &active, active_color_idx);
