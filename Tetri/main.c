@@ -89,10 +89,6 @@ static void paint_cell(struct st7735 *lcd, const Board *b, uint8_t y, uint8_t x)
                               ys, ys + BLOCK_PIXELS - 1, rgb);
 }
 
-static void paint_row(struct st7735 *lcd, const Board *b, uint8_t y) {
-    for (uint8_t x = 0; x < BOARD_W; x++) paint_cell(lcd, b, y, x);
-}
-
 /* ---- playfield frame ---------------------------------------------------- *
  * Draw a 1-px white "U" border around the playfield (left + right + bottom).
  * The top is intentionally open so pieces visibly enter from above.
@@ -221,16 +217,40 @@ static void anim_tick(struct st7735 *lcd, Board *b, AnimState *a, uint16_t now) 
         a->prev_ms = now;
 
         if (a->height_y >= 0) {
-            uint8_t y       = (uint8_t)a->height_y;
-            uint8_t did_move = (uint8_t)(!b->line_formed[y] && b->deltas[y] > 0);
-            uint8_t dst     = (uint8_t)(y + b->deltas[y]);
+            uint8_t y = (uint8_t)a->height_y;
 
-            board_clear_lines_selectively(b, a->height_y);
-            if (did_move) {
-                /* Source row was non-empty -> now empty. Dest row got the
-                 * new content. Repaint both; that's 20 cells / ~6 ms. */
-                paint_row(lcd, b, y);
-                paint_row(lcd, b, dst);
+            /* Skip-conditions match board_clear_lines_selectively itself:
+             * full rows (wiped by width sweep) and rows with no fall.    */
+            if (!b->line_formed[y] && b->deltas[y] > 0) {
+                uint8_t dst = (uint8_t)(y + b->deltas[y]);
+
+                /* Snapshot the source row BEFORE the mutation so we know
+                 * which columns actually carry content. Empty columns at
+                 * the source stay empty at both source AND dest after
+                 * the copy (the dest was already empty -- either wiped by
+                 * the width sweep, or source-cleared by a previous tick
+                 * with higher height_y). So we can skip painting empty
+                 * columns entirely; only ~2-4 cells per row typically
+                 * need touching. Trade: 10 bytes of stack for ~60% less
+                 * SPI traffic per tick + no BG-over-BG repaints. */
+                uint8_t had_content[BOARD_W];
+                for (uint8_t x = 0; x < BOARD_W; x++) {
+                    had_content[x] = b->cells[y][x];
+                }
+
+                board_clear_lines_selectively(b, a->height_y);
+
+                /* Dest-first ordering. The eye sees the piece appear at
+                 * its new row while the old row is still showing, then
+                 * the old row clears. Source-first would create a brief
+                 * gap (~4 ms) where the piece is "in the air" -- right at
+                 * the edge of perceptual flicker and compounds visibly
+                 * across many shift ticks on a tall stack. */
+                for (uint8_t x = 0; x < BOARD_W; x++) {
+                    if (!had_content[x]) continue;
+                    paint_cell(lcd, b, dst, x);
+                    paint_cell(lcd, b, y,   x);
+                }
             }
             a->height_y--;
         } else {
@@ -269,8 +289,8 @@ int main(void) {
     Shape     active;
     uint8_t   active_color_idx;
     uint8_t   in_hard_drop = 0;     /* 1 = fast-falling; inputs locked    */
-    AnimState anim;
-    anim.phase = 0;                 /* start idle; no clear in progress   */
+    AnimState anim = {0};           /* phase=0 (idle); other fields seeded
+                                       by anim_start when a clear begins  */
 
     board_init(&board);
     spawn_next(&active, &active_color_idx);
