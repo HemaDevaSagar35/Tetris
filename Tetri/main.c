@@ -3,6 +3,7 @@
 #include "timer.h"
 #include "buttons.h"
 #include "board.h"
+#include "rules.h"
 #include "i_shape.h"
 #include "j_shape.h"
 #include "l_shape.h"
@@ -86,32 +87,6 @@ static void draw_board_frame(struct st7735 *lcd) {
     ST7735_DrawRectangle(lcd, left,  right, bottom, bottom, WHITE);/* bottom bar */
 }
 
-/* ---- rotation helper ---------------------------------------------------- *
- * Stripped-down port of game/utils.h::do_valid_rotation, minus the board
- * collision check (no Board yet). Rotates in place, applies horizontal
- * wall-kick, and undoes the whole thing if the result still pokes off the
- * bottom. Will move to tet_game/rules.{h,c} when that module exists.
- *   `rotate` is +1 (clockwise) or -1 (anti-clockwise).
- * Returns 1 if the rotation took effect, 0 if it was reverted.
- * --------------------------------------------------------------------------*/
-static uint8_t try_rotation(Shape *s, int8_t rotate) {
-    shape_update_shape(s, rotate);
-
-    Boundary b = shape_get_boundary(s);
-    int8_t corr = 0;
-    if (b.x_min < 0)                     corr = (int8_t)(-b.x_min);
-    else if (b.x_max >= (int8_t)BOARD_W) corr = (int8_t)((BOARD_W - 1) - b.x_max);
-    if (corr) shape_update_position(s, corr, 0);
-
-    b = shape_get_boundary(s);
-    if (b.y_max >= (int8_t)BOARD_H) {
-        if (corr) shape_update_position(s, (int8_t)(-corr), 0);
-        shape_update_shape(s, (int8_t)(-rotate));
-        return 0;
-    }
-    return 1;
-}
-
 /* ---- main ---------------------------------------------------------------- */
 int main(void) {
     struct signal cs = { .ddr = &DDRB, .port = &PORTB, .pin = 4 };  /* SS  on PB4 */
@@ -153,35 +128,30 @@ int main(void) {
          * The hard-drop button lives inside this block too, so re-pressing
          * it during a hard-drop is a no-op for free. */
         if (!in_hard_drop) {
+            /* All four movement handlers share the same erase-mutate-repaint
+             * pattern: do_valid_move/rotation either commits the change or
+             * reverts internally, so on failure we erase and repaint the
+             * exact same pixels (one frame of no-op). The simplicity beats
+             * saving a Shape backup; see avr-c-port-design.mdc "Known
+             * caveat -- unconditional repaint on failed rotation". */
             if (button_left_just_pressed()) {
-                Boundary b = shape_get_boundary(&active);
-                if (b.x_min > 0) {
-                    render_shape(&lcd, &active, COLOR_BG);
-                    shape_update_position(&active, -1, 0);
-                    render_shape(&lcd, &active, active_color_idx);
-                }
+                render_shape(&lcd, &active, COLOR_BG);
+                do_valid_move(&active, &board, -1);
+                render_shape(&lcd, &active, active_color_idx);
             }
-
             if (button_right_just_pressed()) {
-                Boundary b = shape_get_boundary(&active);
-                if (b.x_max < (int8_t)(BOARD_W - 1)) {
-                    render_shape(&lcd, &active, COLOR_BG);
-                    shape_update_position(&active, +1, 0);
-                    render_shape(&lcd, &active, active_color_idx);
-                }
+                render_shape(&lcd, &active, COLOR_BG);
+                do_valid_move(&active, &board, +1);
+                render_shape(&lcd, &active, active_color_idx);
             }
-
-            /* try_rotation does the wall-kick and may revert. We erase,
-             * mutate, repaint regardless -- on failed rotation the piece is
-             * back at its original blocks, so the repaint is a no-op. */
             if (button_rotate_cw_just_pressed()) {
                 render_shape(&lcd, &active, COLOR_BG);
-                try_rotation(&active, +1);
+                do_valid_rotation(&active, &board, +1);
                 render_shape(&lcd, &active, active_color_idx);
             }
             if (button_rotate_ccw_just_pressed()) {
                 render_shape(&lcd, &active, COLOR_BG);
-                try_rotation(&active, -1);
+                do_valid_rotation(&active, &board, -1);
                 render_shape(&lcd, &active, active_color_idx);
             }
 
