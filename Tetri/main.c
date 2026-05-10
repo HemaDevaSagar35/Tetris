@@ -44,10 +44,17 @@
  * `next_kind = roll_kind()` before the first call (otherwise the first
  * active piece would be undefined).
  *
- * Ports the C++ spawn block at testing_main.cpp:228-245 with one
- * divergence: C++ rolls a fresh kind inline; we promote a queued kind.
- * Visually identical from the player's perspective except that they can
- * now see one piece ahead.
+ * Ports the C++ spawn block at testing_main.cpp:228-245 with two
+ * divergences:
+ *   - C++ rolls a fresh kind inline; we promote a queued kind so the
+ *     preview can show one piece ahead.
+ *   - Game-over check (step 7): we use `board_collides(b, active, 0, 0)`
+ *     after building the piece, whereas C++ uses `height_peak <= y_max`
+ *     (testing_main.cpp:258). Collision is slightly more "classic" --
+ *     it only triggers when the spawned blocks ACTUALLY overlap the
+ *     stack, so a line-clear that opens a slot can rescue the spawn.
+ *     C++ is more pessimistic and ends the game even if the piece would
+ *     have fit.
  *
  * Bit-level choices:
  *   - `% SHAPE_KINDS`  - 7 isn't a power of 2, so ~3% bias toward kinds
@@ -75,12 +82,23 @@ static void spawn_with_kind(Shape *s, uint8_t kind, uint8_t *color_idx) {
     if (corr) shape_update_position(s, corr, 0);
 }
 
-static void promote_and_queue(struct st7735 *lcd, Shape *active,
-                              uint8_t *color_idx, uint8_t *next_kind) {
+/* Returns 1 iff the new active piece overlaps the latched stack at its
+ * spawn position -- the game-over trigger. On game over we deliberately
+ * SKIP rendering the piece and updating the preview: the next thing the
+ * caller does is paint the GAME OVER overlay over the playfield, and
+ * showing a piece "stuck in" the stack for one frame before the overlay
+ * lands would just look like a glitch. */
+static uint8_t promote_and_queue(struct st7735 *lcd, Shape *active,
+                                 uint8_t *color_idx, uint8_t *next_kind,
+                                 const Board *board) {
     spawn_with_kind(active, *next_kind, color_idx);
+    if (board_collides(board, active, 0, 0)) {
+        return 1;
+    }
     *next_kind = roll_kind();
     render_shape(lcd, active, *color_idx);
     render_hud_next(lcd, *next_kind);
+    return 0;
 }
 
 /* ---- line-clear animation state machine --------------------------------- *
@@ -211,6 +229,47 @@ static void anim_tick(struct st7735 *lcd, Board *b, AnimState *a, uint16_t now) 
     }
 }
 
+/* ---- reset --------------------------------------------------------------- *
+ * Tear everything back to the boot state, then re-do the boot-time spawn.
+ * Called from the game-over branch when the player picks YES + DOWN.
+ *
+ * Order matters:
+ *   1. Clear screen + redraw frame BEFORE any HUD calls -- ST7735_ClearScreen
+ *      wipes the frame too, and the HUD paint funcs assume the frame is
+ *      already there (so they don't paint over it).
+ *   2. board_init zeros cells + bookkeeping + sets height_peak sentinel.
+ *   3. Zero score / hard-drop / anim. anim = {0} sets phase = 0 so the
+ *      anim short-circuit doesn't fire on the next iteration.
+ *   4. HUD paints: score (0) and -- via promote_and_queue -- preview.
+ *   5. promote_and_queue: roll a kind, queue another, paint active + preview.
+ *      Can't game-over here (board just got cleared), so we ignore the
+ *      return value with (void).
+ *   6. Reset prev_ms so gravity doesn't fire immediately on the next loop.
+ *
+ * The RNG state intentionally is NOT re-seeded: each spawn has already
+ * advanced the xorshift8 stream, so we get fresh-looking pieces from
+ * wherever the stream happened to be when the game ended. Re-seeding from
+ * ADC would also be fine but is unnecessary churn.
+ * --------------------------------------------------------------------------*/
+static void reset_game(struct st7735 *lcd, Board *board, Shape *active,
+                       uint8_t *color_idx, uint8_t *next_kind,
+                       uint16_t *score, AnimState *anim,
+                       uint8_t *in_hard_drop, uint16_t *prev_ms) {
+    ST7735_ClearScreen(lcd, BLACK);
+    draw_board_frame(lcd);
+
+    board_init(board);
+    *score        = 0;
+    *in_hard_drop = 0;
+    *anim         = (AnimState){0};
+
+    render_hud_score(lcd, *score);
+    *next_kind = roll_kind();
+    (void)promote_and_queue(lcd, active, color_idx, next_kind, board);
+
+    *prev_ms = timer_now_ms();
+}
+
 /* ---- main ---------------------------------------------------------------- */
 int main(void) {
     struct signal cs = { .ddr = &DDRB, .port = &PORTB, .pin = 4 };  /* SS  on PB4 */
@@ -239,19 +298,85 @@ int main(void) {
     uint16_t  score = 0;            /* running total of lines cleared     */
     uint8_t   next_kind;            /* queued piece kind; rolled at boot,
                                        promoted on every spawn            */
+    uint8_t   game_over    = 0;     /* 1 when GAME OVER overlay is showing */
+    uint8_t   go_selection = GAME_OVER_SEL_YES;   /* cursor on the overlay */
 
     board_init(&board);
     /* Boot: roll the very first queued kind, then promote it immediately.
      * After this call, `next_kind` holds the kind shown in the preview
-     * (the one the player will get on the NEXT spawn). */
+     * (the one the player will get on the NEXT spawn). The board is empty
+     * here so the spawn collision check inside promote_and_queue cannot
+     * fire -- safe to ignore the return value. */
     next_kind = roll_kind();
-    promote_and_queue(&lcd, &active, &active_color_idx, &next_kind);
+    (void)promote_and_queue(&lcd, &active, &active_color_idx, &next_kind,
+                            &board);
     render_hud_score(&lcd, score);
 
     uint16_t prev_ms = timer_now_ms();
 
     while (1) {
         uint16_t now = timer_now_ms();
+
+        /* ---- game-over short-circuit ----------------------------------- *
+         * Sits above the anim short-circuit so that even if a clear was
+         * mid-animation when the game ended (it can't be -- game-over only
+         * fires on spawn AFTER the anim finishes -- but defensively), we'd
+         * still freeze. While `game_over` is set, gameplay (gravity, anim,
+         * movement inputs) is fully gated; only the cursor + commit buttons
+         * are live.
+         *
+         * Button semantics in game-over mode:
+         *   LEFT  -> cursor = YES (no-op if already there)
+         *   RIGHT -> cursor = NO
+         *   DOWN  -> commit:
+         *             YES = reset_game()  (full re-init)
+         *             NO  = nothing for now -- placeholder for future
+         *                   power-off behaviour. We still consume the edge
+         *                   so the gameplay loop doesn't see it if the
+         *                   player navigates back to YES later.
+         *
+         * Each press only repaints line 3 of the overlay (cheap), not the
+         * whole panel. Mutual exclusion with the gameplay input block is
+         * automatic -- the `continue` below skips the gameplay block.   */
+        if (game_over) {
+            if (button_left_just_pressed() &&
+                go_selection != GAME_OVER_SEL_YES) {
+                go_selection = GAME_OVER_SEL_YES;
+                render_game_over_selection(&lcd, go_selection);
+            }
+            if (button_right_just_pressed() &&
+                go_selection != GAME_OVER_SEL_NO) {
+                go_selection = GAME_OVER_SEL_NO;
+                render_game_over_selection(&lcd, go_selection);
+            }
+            if (button_down_just_pressed()) {
+                if (go_selection == GAME_OVER_SEL_YES) {
+                    game_over    = 0;
+                    go_selection = GAME_OVER_SEL_YES;
+                    reset_game(&lcd, &board, &active, &active_color_idx,
+                               &next_kind, &score, &anim, &in_hard_drop,
+                               &prev_ms);
+                } else {
+                    /* NO + DOWN -- "switch off" simulation. Paint the
+                     * whole screen WHITE then break out of the main loop.
+                     * Falling out of main() lands in avr-libc's _exit,
+                     * which does `cli; rjmp .` -- interrupts off, chip
+                     * halted, no further response. The LCD controller
+                     * keeps its own framebuffer so the WHITE stays on
+                     * screen indefinitely. Only a hardware RESET (or
+                     * power cycle) brings the chip back.
+                     *
+                     * Note: this is "halted" not "asleep" -- chip still
+                     * draws ~10 mA. For a USB-powered hobby setup that's
+                     * fine; swap `break` for `sleep_cpu()` with
+                     * SLEEP_MODE_PWR_DOWN if true low-power is ever
+                     * needed. */
+                    ST7735_ClearScreen(&lcd, WHITE);
+                    break;
+                }
+            }
+            continue;
+        }
 
         /* ---- line-clear animation short-circuit ------------------------ *
          * While a clear is animating, gravity and inputs are frozen. The
@@ -281,7 +406,14 @@ int main(void) {
                     score = new_score;
                     render_hud_score(&lcd, score);
                 }
-                promote_and_queue(&lcd, &active, &active_color_idx, &next_kind);
+                if (promote_and_queue(&lcd, &active, &active_color_idx,
+                                      &next_kind, &board)) {
+                    /* Spawn collided with the stack -- step 7 trigger. */
+                    game_over    = 1;
+                    go_selection = GAME_OVER_SEL_YES;
+                    render_game_over_overlay(&lcd);
+                    render_game_over_selection(&lcd, go_selection);
+                }
                 prev_ms = now;
             }
             continue;
@@ -356,8 +488,14 @@ int main(void) {
                 if (board.lines_filled) {
                     anim_start(&anim, now);
                 } else {
-                    promote_and_queue(&lcd, &active, &active_color_idx,
-                                      &next_kind);
+                    if (promote_and_queue(&lcd, &active, &active_color_idx,
+                                          &next_kind, &board)) {
+                        /* Spawn collided with the stack -- step 7 trigger. */
+                        game_over    = 1;
+                        go_selection = GAME_OVER_SEL_YES;
+                        render_game_over_overlay(&lcd);
+                        render_game_over_selection(&lcd, go_selection);
+                    }
                 }
             }
         }

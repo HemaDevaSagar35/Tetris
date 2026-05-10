@@ -56,4 +56,40 @@ void render_hud_score(struct st7735 *lcd, uint16_t score);
 
 void render_hud_next(struct st7735 *lcd, uint8_t kind);
 
+/* Game-over overlay (Step 7):
+ *   - Centered panel on the playfield, 76 x 45 px (x = 27..102, y = 58..102).
+ *   - WHITE filled panel + BLACK X1 text (5x8 font). Three lines:
+ *       line 1  "GAME OVER"      (9 chars,  53 px wide)
+ *       line 2  "PLAY AGAIN?"    (11 chars, 65 px wide)
+ *       line 3  "[YES]  NO" / "YES  [NO]"  (9 chars, 53 px wide -- cursor)
+ *
+ *   - Split into two render functions so cursor moves don't redraw the
+ *     whole panel:
+ *
+ *       render_game_over_overlay(lcd)
+ *           Paint panel + static lines 1 and 2. Called once on game-over
+ *           entry.
+ *
+ *       render_game_over_selection(lcd, selection)
+ *           Erase the line-3 strip back to WHITE, then paint the YES/NO
+ *           line with brackets around the active selection. Called on
+ *           entry and after every LEFT/RIGHT press. We have to erase the
+ *           strip because the two strings have brackets at different
+ *           x-offsets, so simply overdrawing the new string would leave
+ *           old bracket pixels.
+ *
+ *   - Inputs while game_over == 1:
+ *       LEFT  -> selection = 0 (YES)
+ *       RIGHT -> selection = 1 (NO)
+ *       DOWN  -> commit: YES = full reset, NO = no-op (wired later for
+ *                power-off behaviour).
+ *     The gameplay input block is short-circuited above by a `continue`,
+ *     so the down-button just_pressed() callers are mutually exclusive --
+ *     no edge can be consumed twice. */
+#define GAME_OVER_SEL_YES   0
+#define GAME_OVER_SEL_NO    1
+
+void render_game_over_overlay(struct st7735 *lcd);
+void render_game_over_selection(struct st7735 *lcd, uint8_t selection);
+
 #endif

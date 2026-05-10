@@ -3,6 +3,7 @@
 #include "factory.h"     /* COLOR_BG, shape_factory, SHAPE_KINDS         */
 #include "utils.h"       /* tet_shapes/utils.h: Shape, Pixel, Boundary,
                             SHAPE_BLOCKS, shape_get_boundary, shape_get_blocks */
+#include "render.h"      /* BOARD_OFFSET_X, BOARD_PX_W, BOARD_PX_H        */
 
 /* ---- score layout constants --------------------------------------------- */
 #define SCORE_X        2     /* origin x in the left margin (1 px from edge) */
@@ -111,4 +112,79 @@ void render_hud_next(struct st7735 *lcd, uint8_t kind) {
         ST7735_DrawRectangle(lcd, xs, xs + NEXT_PX - 1,
                                   ys, ys + NEXT_PX - 1, rgb);
     }
+}
+
+/* ---- game-over overlay -------------------------------------------------- *
+ * Geometry derivation:
+ *   - X1 font glyph: 5 cols x 8 rows, advances 6 px per char (5 + 1 space).
+ *   - Line widths (chars * 6 - 1):
+ *       "GAME OVER"   ->  9 *6 - 1 = 53 px
+ *       "PLAY AGAIN?" -> 11 *6 - 1 = 65 px
+ *       "[YES]  NO"   ->  9 *6 - 1 = 53 px   (same width as "YES  [NO]")
+ *   - Playfield: x = 25..104 (80 px), y = 0..159.
+ *
+ * Panel: inset 2 px from playfield edges -> x = 27..102 (76 wide). Three
+ * 8-px text lines + padding need ~38 px tall; we round up to y = 58..102
+ * (45 tall) so the panel reads as deliberate spacing, not cramped.
+ *
+ * Vertical layout (y offsets from OVL_Y0):
+ *   +4   line 1  "GAME OVER"
+ *   +18  line 2  "PLAY AGAIN?"
+ *   +32  line 3  "[YES]  NO"  /  "YES  [NO]"
+ * Each line is 8 px tall; gaps are 6 px; bottom padding = 102 - (58+32+8) = 4.
+ * --------------------------------------------------------------------------*/
+#define OVL_X0          (BOARD_OFFSET_X + 2)                /* 27 */
+#define OVL_X1          (BOARD_OFFSET_X + BOARD_PX_W - 3)   /* 102 */
+#define OVL_Y0          58
+#define OVL_Y1          102
+#define OVL_W           (OVL_X1 - OVL_X0 + 1)               /* 76 */
+
+#define OVL_LINE1_Y_OFF  4
+#define OVL_LINE2_Y_OFF  18
+#define OVL_LINE3_Y_OFF  32
+
+#define OVL_LINE1_W      53   /* "GAME OVER"   */
+#define OVL_LINE2_W      65   /* "PLAY AGAIN?" */
+#define OVL_LINE3_W      53   /* "[YES]  NO" or "YES  [NO]" -- same width */
+
+void render_game_over_overlay(struct st7735 *lcd) {
+    /* WHITE filled panel. Single DrawRectangle, ~10 ms SPI for 76*45 px. */
+    ST7735_DrawRectangle(lcd, OVL_X0, OVL_X1, OVL_Y0, OVL_Y1, WHITE);
+
+    /* Line 1: "GAME OVER", centered. */
+    uint8_t l1_x = (uint8_t)(OVL_X0 + (OVL_W - OVL_LINE1_W) / 2);
+    ST7735_SetPosition(l1_x, OVL_Y0 + OVL_LINE1_Y_OFF);
+    ST7735_DrawString(lcd, "GAME OVER", BLACK, X1);
+
+    /* Line 2: "PLAY AGAIN?", centered. */
+    uint8_t l2_x = (uint8_t)(OVL_X0 + (OVL_W - OVL_LINE2_W) / 2);
+    ST7735_SetPosition(l2_x, OVL_Y0 + OVL_LINE2_Y_OFF);
+    ST7735_DrawString(lcd, "PLAY AGAIN?", BLACK, X1);
+
+    /* Line 3 is the dynamic selection line -- caller paints it via
+     * render_game_over_selection() once the initial cursor state is
+     * decided. Keeping that out of here lets the caller redraw just
+     * line 3 on every LEFT/RIGHT press without touching lines 1 / 2. */
+}
+
+void render_game_over_selection(struct st7735 *lcd, uint8_t selection) {
+    /* Erase the line-3 strip back to WHITE first. The two strings have
+     * brackets at different x-offsets ("[YES]  NO" puts brackets at
+     * cols 0 and 4; "YES  [NO]" at cols 5 and 8), so overdrawing the
+     * new string would leave stray bracket pixels from the old one.
+     * Strip spans the full panel interior horizontally with a 1-px
+     * vertical margin around the 8-px-tall glyphs.                    */
+    uint8_t strip_y0 = (uint8_t)(OVL_Y0 + OVL_LINE3_Y_OFF - 1);
+    uint8_t strip_y1 = (uint8_t)(OVL_Y0 + OVL_LINE3_Y_OFF + 8);
+    ST7735_DrawRectangle(lcd, OVL_X0 + 1, OVL_X1 - 1,
+                              strip_y0, strip_y1, WHITE);
+
+    /* Draw the selection line, centered. Both strings are 9 chars wide
+     * so the start_x is the same regardless of which one is active. */
+    uint8_t l3_x = (uint8_t)(OVL_X0 + (OVL_W - OVL_LINE3_W) / 2);
+    ST7735_SetPosition(l3_x, OVL_Y0 + OVL_LINE3_Y_OFF);
+    ST7735_DrawString(lcd,
+                      (selection == GAME_OVER_SEL_YES) ? "[YES]  NO"
+                                                      : "YES  [NO]",
+                      BLACK, X1);
 }
