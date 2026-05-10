@@ -28,37 +28,59 @@
  * lines cleared, ported verbatim from testing_main.cpp:418-420. */
 #define SCORE_MAX       999U
 
-/* ---- spawn --------------------------------------------------------------- *
- * Roll a random piece, x, and rotation; init it in `s`; write its color
- * index to `*color_idx`; and kick it back on board if the random x left
- * the rotated shape poking off a side edge.
+/* ---- spawn / queue ------------------------------------------------------- *
+ * Step 6 phase 2 introduces a 1-deep queue so the right-margin preview can
+ * show "what's coming next". The active piece is the piece you're playing
+ * with; `next_kind` is the kind that will be promoted on the next spawn.
  *
- * Ports the C++ spawn block at testing_main.cpp:228-245 minus the
- * "is_lines_formed()" gate (step 4) and the height_peak <= y_max game-over
- * check (step 7). Game-over: if the new piece overlaps the stack at spawn,
- * the next gravity tick latches it in place; the board will visibly fill
- * up. We'll add the proper game-over check in step 7.
+ * Flow per spawn (boot, post-clear, post-lock):
+ *   1. spawn_with_kind(active, next_kind, color)  -- use queued kind for
+ *                                                    active piece
+ *   2. next_kind = roll_kind()                    -- queue a new kind
+ *   3. render_shape(active)                       -- paint active on board
+ *   4. render_hud_next(next_kind)                 -- paint preview
+ *
+ * `promote_and_queue` bundles those four steps. Boot also needs a one-time
+ * `next_kind = roll_kind()` before the first call (otherwise the first
+ * active piece would be undefined).
+ *
+ * Ports the C++ spawn block at testing_main.cpp:228-245 with one
+ * divergence: C++ rolls a fresh kind inline; we promote a queued kind.
+ * Visually identical from the player's perspective except that they can
+ * now see one piece ahead.
  *
  * Bit-level choices:
- *   - `% SHAPE_KINDS`  - 7 isn't a power of 2, so ~3% bias toward shapes
- *                        0..2. Acceptable; switching to rejection sampling
- *                        costs a loop and we don't care for a hobby game.
+ *   - `% SHAPE_KINDS`  - 7 isn't a power of 2, so ~3% bias toward kinds
+ *                        0..2. Acceptable; rejection sampling costs a
+ *                        loop and the visible bias is tiny for a hobby
+ *                        game.
  *   - `% BOARD_W`      - 10 isn't a power of 2 either; same ~4% bias.
  *                        xaxis_correction handles the off-board case after.
  *   - `& 0x03`         - rotation is 0..3, power of 2, no bias.
  * --------------------------------------------------------------------------*/
-static void spawn_next(Shape *s, uint8_t *color_idx) {
-    uint8_t shape_idx = (uint8_t)(rng_next8() % SHAPE_KINDS);
-    int8_t  spawn_x   = (int8_t)(rng_next8() % BOARD_W);
-    int8_t  rotation  = (int8_t)(rng_next8() & 0x03);
+static uint8_t roll_kind(void) {
+    return (uint8_t)(rng_next8() % SHAPE_KINDS);
+}
 
-    shape_factory[shape_idx].init(s, spawn_x, 0, rotation);
-    *color_idx = shape_factory[shape_idx].color_idx;
+static void spawn_with_kind(Shape *s, uint8_t kind, uint8_t *color_idx) {
+    int8_t spawn_x  = (int8_t)(rng_next8() % BOARD_W);
+    int8_t rotation = (int8_t)(rng_next8() & 0x03);
+
+    shape_factory[kind].init(s, spawn_x, 0, rotation);
+    *color_idx = shape_factory[kind].color_idx;
 
     /* Random x + rotation can put blocks at x < 0 or x >= BOARD_W. Same
      * wall-kick we use during gameplay rotations. */
     int8_t corr = xaxis_correction(shape_get_boundary(s));
     if (corr) shape_update_position(s, corr, 0);
+}
+
+static void promote_and_queue(struct st7735 *lcd, Shape *active,
+                              uint8_t *color_idx, uint8_t *next_kind) {
+    spawn_with_kind(active, *next_kind, color_idx);
+    *next_kind = roll_kind();
+    render_shape(lcd, active, *color_idx);
+    render_hud_next(lcd, *next_kind);
 }
 
 /* ---- line-clear animation state machine --------------------------------- *
@@ -215,10 +237,15 @@ int main(void) {
     AnimState anim = {0};           /* phase=0 (idle); other fields seeded
                                        by anim_start when a clear begins  */
     uint16_t  score = 0;            /* running total of lines cleared     */
+    uint8_t   next_kind;            /* queued piece kind; rolled at boot,
+                                       promoted on every spawn            */
 
     board_init(&board);
-    spawn_next(&active, &active_color_idx);
-    render_shape(&lcd, &active, active_color_idx);
+    /* Boot: roll the very first queued kind, then promote it immediately.
+     * After this call, `next_kind` holds the kind shown in the preview
+     * (the one the player will get on the NEXT spawn). */
+    next_kind = roll_kind();
+    promote_and_queue(&lcd, &active, &active_color_idx, &next_kind);
     render_hud_score(&lcd, score);
 
     uint16_t prev_ms = timer_now_ms();
@@ -254,8 +281,7 @@ int main(void) {
                     score = new_score;
                     render_hud_score(&lcd, score);
                 }
-                spawn_next(&active, &active_color_idx);
-                render_shape(&lcd, &active, active_color_idx);
+                promote_and_queue(&lcd, &active, &active_color_idx, &next_kind);
                 prev_ms = now;
             }
             continue;
@@ -330,8 +356,8 @@ int main(void) {
                 if (board.lines_filled) {
                     anim_start(&anim, now);
                 } else {
-                    spawn_next(&active, &active_color_idx);
-                    render_shape(&lcd, &active, active_color_idx);
+                    promote_and_queue(&lcd, &active, &active_color_idx,
+                                      &next_kind);
                 }
             }
         }
