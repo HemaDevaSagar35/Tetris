@@ -4,13 +4,8 @@
 #include "buttons.h"
 #include "board.h"
 #include "rules.h"
-#include "i_shape.h"
-#include "j_shape.h"
-#include "l_shape.h"
-#include "o_shape.h"
-#include "s_shape.h"
-#include "t_shape.h"
-#include "z_shape.h"
+#include "factory.h"
+#include "rng.h"
 
 /* ---- tunable knobs ------------------------------------------------------- *
  * Classic Tetris playfield is 10 wide x 20 tall (BOARD_W/BOARD_H now live in
@@ -31,18 +26,11 @@
 #define BOARD_OFFSET_Y  ((SCREEN_H - BOARD_PX_H) / 2)   /* =  0 */
 
 /* ---- palette ------------------------------------------------------------- *
- * Will move to tet_render/palette.{h,c} when that module appears.
+ * COLOR_* indices live in tet_game/factory.h (they're game-state values,
+ * stored in the Board). This array is the renderer-side mapping from
+ * those indices to RGB565 for the ST7735. Both move to
+ * tet_render/palette.{h,c} in step 6.
  * --------------------------------------------------------------------------*/
-#define COLOR_BG     0
-#define COLOR_T      1
-#define COLOR_I      2
-#define COLOR_O      3
-#define COLOR_L      4
-#define COLOR_J      5
-#define COLOR_S      6
-#define COLOR_Z      7
-#define COLOR_COUNT  8
-
 static const uint16_t palette[COLOR_COUNT] = {
     [COLOR_BG] = BLACK,
     [COLOR_T]  = 0xFFE0,    /* yellow */
@@ -87,6 +75,39 @@ static void draw_board_frame(struct st7735 *lcd) {
     ST7735_DrawRectangle(lcd, left,  right, bottom, bottom, WHITE);/* bottom bar */
 }
 
+/* ---- spawn --------------------------------------------------------------- *
+ * Roll a random piece, x, and rotation; init it in `s`; write its color
+ * index to `*color_idx`; and kick it back on board if the random x left
+ * the rotated shape poking off a side edge.
+ *
+ * Ports the C++ spawn block at testing_main.cpp:228-245 minus the
+ * "is_lines_formed()" gate (step 4) and the height_peak <= y_max game-over
+ * check (step 7). Game-over: if the new piece overlaps the stack at spawn,
+ * the next gravity tick latches it in place; the board will visibly fill
+ * up. We'll add the proper game-over check in step 7.
+ *
+ * Bit-level choices:
+ *   - `% SHAPE_KINDS`  - 7 isn't a power of 2, so ~3% bias toward shapes
+ *                        0..2. Acceptable; switching to rejection sampling
+ *                        costs a loop and we don't care for a hobby game.
+ *   - `% BOARD_W`      - 10 isn't a power of 2 either; same ~4% bias.
+ *                        xaxis_correction handles the off-board case after.
+ *   - `& 0x03`         - rotation is 0..3, power of 2, no bias.
+ * --------------------------------------------------------------------------*/
+static void spawn_next(Shape *s, uint8_t *color_idx) {
+    uint8_t shape_idx = (uint8_t)(rng_next8() % SHAPE_KINDS);
+    int8_t  spawn_x   = (int8_t)(rng_next8() % BOARD_W);
+    int8_t  rotation  = (int8_t)(rng_next8() & 0x03);
+
+    shape_factory[shape_idx].init(s, spawn_x, 0, rotation);
+    *color_idx = shape_factory[shape_idx].color_idx;
+
+    /* Random x + rotation can put blocks at x < 0 or x >= BOARD_W. Same
+     * wall-kick we use during gameplay rotations. */
+    int8_t corr = xaxis_correction(shape_get_boundary(s));
+    if (corr) shape_update_position(s, corr, 0);
+}
+
 /* ---- main ---------------------------------------------------------------- */
 int main(void) {
     struct signal cs = { .ddr = &DDRB, .port = &PORTB, .pin = 4 };  /* SS  on PB4 */
@@ -101,7 +122,8 @@ int main(void) {
 
     timer_init_1ms();
     buttons_init();
-    sei();   /* now Timer1 compare-match ISR can actually fire */
+    rng_seed_from_adc();            /* ADC poll is sync; safe with IRQs off */
+    sei();                          /* now Timer1 compare-match ISR can fire */
 
     /* Game state. Color is a sibling local, not a Shape field
      * (see avr-c-port-design.mdc). */
@@ -111,10 +133,7 @@ int main(void) {
     uint8_t in_hard_drop = 0;       /* 1 = fast-falling; inputs locked */
 
     board_init(&board);
-
-    /* Step 1 spawn: always a T at (3, 0). Factory + RNG comes in step 3. */
-    active_color_idx = COLOR_T;
-    t_shape_init(&active, 3, 0, 0);
+    spawn_next(&active, &active_color_idx);
     render_shape(&lcd, &active, active_color_idx);
 
     uint16_t prev_ms = timer_now_ms();
@@ -182,8 +201,7 @@ int main(void) {
                 board_latch(&board, &active, active_color_idx);
                 in_hard_drop = 0;
 
-                active_color_idx = COLOR_T;
-                t_shape_init(&active, 3, 0, 0);
+                spawn_next(&active, &active_color_idx);
                 render_shape(&lcd, &active, active_color_idx);
             }
         }
